@@ -1,0 +1,9 @@
+{
+  "name": "pokemon-price-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Watches Pokemon card prices (TCGPlayer + CardMarket via pokemontcg.io) and pushes a phone notification when a card hits your target price, dips a set percentage, or reaches a new low.",
+  "dependencies": {
+    "@upstash/redis": "^1.34.0"
+  }
+}
