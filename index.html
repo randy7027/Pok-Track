@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — Card Price Watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink-bg: #161A16;
+    --ink-surface: #1E2420;
+    --ink-raised: #242B25;
+    --paper: #E9E4D4;
+    --paper-dim: #B7B2A0;
+    --paper-muted: #767C70;
+    --brass: #C08B3E;
+    --brass-bright: #DDAE63;
+    --brass-dim: rgba(192, 139, 62, 0.16);
+    --line: rgba(233, 228, 212, 0.10);
+    --font-display: 'Fraunces', serif;
+    --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink-bg);
+    color: var(--paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 4rem;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 2.25rem 1.25rem 1rem;
+  }
+
+  header { margin-bottom: 1.75rem; }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brass);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: 2.1rem;
+    margin: 0.2rem 0 0.4rem;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--paper-dim);
+    font-size: 0.92rem;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  section.add-panel { position: relative; margin-bottom: 0.5rem; }
+
+  input[type="text"], input[type="number"] {
+    width: 100%;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input::placeholder { color: var(--paper-muted); }
+  input:focus-visible { border-color: var(--brass); }
+
+  .search-results {
+    position: relative;
+    margin-top: 0.4rem;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+  }
+  .search-results:empty { display: none; border: none; }
+
+  .result-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row:hover, .result-row:focus-visible { background: var(--ink-raised); }
+  .result-row img { width: 32px; height: 44px; object-fit: cover; border-radius: 3px; background: var(--ink-raised); flex-shrink: 0; }
+  .result-info { flex: 1; min-width: 0; }
+  .result-name { font-size: 0.92rem; }
+  .result-set { font-size: 0.76rem; color: var(--paper-muted); }
+  .result-price { font-family: var(--font-mono); font-size: 0.85rem; color: var(--brass-bright); white-space: nowrap; }
+
+  .threshold-form {
+    background: var(--ink-surface);
+    border: 1px solid var(--brass-dim);
+    border-radius: 12px;
+    padding: 1.1rem;
+    margin: 0.6rem 0 1.5rem;
+  }
+  .threshold-form.hidden { display: none; }
+
+  .tf-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .tf-card img { width: 40px; height: 55px; object-fit: cover; border-radius: 4px; }
+  .tf-card-name { font-family: var(--font-display); font-size: 1.1rem; }
+  .tf-card-set { font-size: 0.78rem; color: var(--paper-muted); }
+
+  .tf-field { margin-bottom: 0.85rem; }
+  .tf-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--paper-dim);
+    margin-bottom: 0.35rem;
+  }
+  .tf-field .hint { color: var(--paper-muted); font-size: 0.74rem; margin-top: 0.3rem; }
+
+  .tf-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.88rem;
+    color: var(--paper-dim);
+  }
+  .tf-checkbox input { width: auto; accent-color: var(--brass); }
+
+  .tf-actions { display: flex; gap: 0.6rem; margin-top: 1.1rem; }
+
+  button {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 8px;
+    padding: 0.8rem 1.1rem;
+    cursor: pointer;
+    min-height: 44px;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+  button:active { transform: scale(0.98); }
+  button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  .primary-btn { background: var(--brass); color: #14170F; font-weight: 600; flex: 1; }
+  .primary-btn:hover { background: var(--brass-bright); }
+  .text-btn { background: transparent; color: var(--paper-muted); }
+  .text-btn:hover { color: var(--paper); }
+
+  .ghost-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    font-size: 0.8rem;
+    padding: 0.5rem 0.85rem;
+    min-height: 36px;
+  }
+  .ghost-btn:hover { border-color: var(--brass); color: var(--brass-bright); }
+  .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1.8rem 0 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+  }
+
+  .card-list { display: flex; flex-direction: column; gap: 0.7rem; }
+
+  .card-row {
+    position: relative;
+    display: flex;
+    gap: 0.9rem;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1rem 1rem 1rem;
+    overflow: hidden;
+  }
+  .card-row.is-alerting { border-top-color: var(--brass); }
+
+  .card-row img.thumb {
+    width: 48px;
+    height: 66px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: var(--ink-raised);
+  }
+
+  .card-main { flex: 1; min-width: 0; }
+  .card-name { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; padding-right: 3.5rem; }
+  .card-set { font-size: 0.76rem; color: var(--paper-muted); margin-top: 0.15rem; }
+  .card-price { font-family: var(--font-mono); font-size: 1.35rem; margin-top: 0.5rem; color: var(--paper); }
+  .card-price .cur { font-size: 0.9rem; color: var(--paper-muted); }
+
+  .card-meta {
+    font-size: 0.76rem;
+    color: var(--paper-muted);
+    margin-top: 0.35rem;
+    line-height: 1.5;
+  }
+  .card-reasons { color: var(--brass-bright); font-size: 0.78rem; margin-top: 0.35rem; }
+
+  .stamp {
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--paper-muted);
+    color: var(--paper-muted);
+    border-radius: 4px;
+    padding: 0.2rem 0.4rem;
+    transform: rotate(3deg);
+  }
+  .stamp.hit {
+    border-color: var(--brass);
+    color: var(--brass-bright);
+    background: var(--brass-dim);
+  }
+
+  .remove-btn {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.7rem;
+    background: transparent;
+    color: var(--paper-muted);
+    font-size: 0.72rem;
+    padding: 0.3rem 0.5rem;
+    min-height: auto;
+  }
+  .remove-btn:hover { color: var(--brass-bright); }
+
+  .empty-state {
+    text-align: center;
+    color: var(--paper-muted);
+    font-size: 0.9rem;
+    padding: 2.5rem 1rem;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+  }
+  .empty-state.hidden { display: none; }
+
+  footer {
+    margin-top: 2.5rem;
+    text-align: center;
+    font-size: 0.74rem;
+    color: var(--paper-muted);
+    line-height: 1.6;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card-row { animation: fadeIn 0.25s ease; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">Specimen Ledger</div>
+      <h1>Card Price Watch</h1>
+      <p class="sub">Add a card, set a price you'd buy at, and let it watch TCGPlayer for you.</p>
+    </header>
+
+    <section class="add-panel">
+      <input type="text" id="searchInput" placeholder="Search a card — e.g. Charizard base set" autocomplete="off">
+      <div class="search-results" id="searchResults"></div>
+    </section>
+
+    <div class="threshold-form hidden" id="thresholdForm">
+      <div class="tf-card">
+        <img id="tfImg" alt="">
+        <div>
+          <div class="tf-card-name" id="tfName"></div>
+          <div class="tf-card-set" id="tfSet"></div>
+        </div>
+      </div>
+
+      <div class="tf-field">
+        <label for="tfTarget">Alert at or below this price</label>
+        <input type="number" id="tfTarget" inputmode="decimal" placeholder="e.g. 250" min="0" step="0.01">
+      </div>
+
+      <div class="tf-field">
+        <label for="tfDip">Alert on a percentage dip</label>
+        <input type="number" id="tfDip" inputmode="numeric" placeholder="e.g. 15 (for 15%)" min="0" max="99" step="1">
+        <div class="hint">Compared against the trailing 7-day average once there's enough history.</div>
+      </div>
+
+      <div class="tf-field">
+        <label class="tf-checkbox">
+          <input type="checkbox" id="tfLow">
+          Alert on a new low since you started tracking it
+        </label>
+      </div>
+
+      <div class="tf-actions">
+        <button class="primary-btn" id="tfSubmit">Track this card</button>
+        <button class="text-btn" id="tfCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="list-header">
+      <span id="listCount">0 tracked</span>
+      <button class="ghost-btn" id="checkNowBtn">Check now</button>
+    </div>
+
+    <div class="card-list" id="cardList"></div>
+    <div class="empty-state" id="emptyState">Nothing catalogued yet — search above to start watching a card.</div>
+
+    <footer>
+      Checks run automatically once a day. Prices sourced from TCGPlayer and CardMarket via pokemontcg.io.
+    </footer>
+  </div>
+
+<script>
+  const state = { cards: [], pendingCard: null };
+  const $ = (id) => document.getElementById(id);
+
+  function money(amount, currency) {
+    const symbol = currency === 'EUR' ? '\u20AC' : '$';
+    return `<span class="cur">${symbol}</span>${Number(amount).toFixed(2)}`;
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  }
+
+  async function loadWatchlist() {
+    const res = await fetch('/api/watchlist');
+    const data = await res.json();
+    state.cards = data.cards || [];
+    render();
+  }
+
+  function render() {
+    const list = $('cardList');
+    const empty = $('emptyState');
+    $('listCount').textContent = `${state.cards.length} tracked`;
+
+    if (!state.cards.length) {
+      list.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+
+    list.innerHTML = state.cards.map((c) => {
+      const metaBits = [];
+      if (c.targetPrice != null) metaBits.push(`target ${c.currency === 'EUR' ? '\u20AC' : '$'}${c.targetPrice}`);
+      if (c.dipPercent != null) metaBits.push(`${c.dipPercent}% dip`);
+      if (c.alertOnLow) metaBits.push('watching for new low');
+      if (c.lowestSeen != null) metaBits.push(`lowest seen ${c.currency === 'EUR' ? '\u20AC' : '$'}${Number(c.lowestSeen).toFixed(2)}`);
+      metaBits.push(`checked ${timeAgo(c.lastChecked)}`);
+
+      const stampText = c.alerting ? 'Buy signal' : 'Watching';
+      const reasons = c.alertReasons && c.alertReasons.length
+        ? `<div class="card-reasons">${c.alertReasons.join(' \u00b7 ')}</div>` : '';
+
+      return `
+        <div class="card-row ${c.alerting ? 'is-alerting' : ''}">
+          <div class="stamp ${c.alerting ? 'hit' : ''}">${stampText}</div>
+          ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
+          <div class="card-main">
+            <div class="card-name">${c.name}</div>
+            <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}</div>
+            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'}</div>
+            <div class="card-meta">${metaBits.join(' \u00b7 ')}</div>
+            ${reasons}
+          </div>
+          <button class="remove-btn" data-id="${c.id}">Remove</button>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.remove-btn').forEach((btn) => {
+      btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+  }
+
+  let searchTimer = null;
+  $('searchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.trim();
+    if (q.length < 2) { $('searchResults').innerHTML = ''; return; }
+    searchTimer = setTimeout(() => doSearch(q), 350);
+  });
+
+  async function doSearch(q) {
+    try {
+      const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      const results = data.results || [];
+      $('searchResults').innerHTML = results.map((r) => `
+        <div class="result-row" data-id="${r.id}" tabindex="0">
+          ${r.image ? `<img src="${r.image}" alt="">` : ''}
+          <div class="result-info">
+            <div class="result-name">${r.name}</div>
+            <div class="result-set">${r.set || ''}${r.number ? ' \u00b7 #' + r.number : ''}</div>
+          </div>
+          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : ''}</div>
+        </div>
+      `).join('');
+
+      $('searchResults').querySelectorAll('.result-row').forEach((row) => {
+        const match = results.find((r) => r.id === row.dataset.id);
+        row.addEventListener('click', () => openThresholdForm(match));
+      });
+    } catch (err) {
+      $('searchResults').innerHTML = `<div class="result-row">Search failed — try again</div>`;
+    }
+  }
+
+  function openThresholdForm(card) {
+    state.pendingCard = card;
+    $('tfImg').src = card.image || '';
+    $('tfName').textContent = card.name;
+    $('tfSet').textContent = `${card.set || ''}${card.number ? ' \u00b7 #' + card.number : ''}`;
+    $('tfTarget').value = '';
+    $('tfDip').value = '';
+    $('tfLow').checked = true;
+    $('thresholdForm').classList.remove('hidden');
+    $('searchResults').innerHTML = '';
+    $('searchInput').value = '';
+    $('thresholdForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('tfCancel').addEventListener('click', () => {
+    $('thresholdForm').classList.add('hidden');
+    state.pendingCard = null;
+  });
+
+  $('tfSubmit').addEventListener('click', async () => {
+    if (!state.pendingCard) return;
+    $('tfSubmit').disabled = true;
+    $('tfSubmit').textContent = 'Adding\u2026';
+    try {
+      await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: state.pendingCard.id,
+          targetPrice: $('tfTarget').value || null,
+          dipPercent: $('tfDip').value || null,
+          alertOnLow: $('tfLow').checked
+        })
+      });
+      $('thresholdForm').classList.add('hidden');
+      state.pendingCard = null;
+      await loadWatchlist();
+    } finally {
+      $('tfSubmit').disabled = false;
+      $('tfSubmit').textContent = 'Track this card';
+    }
+  });
+
+  async function removeCard(id) {
+    await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    await loadWatchlist();
+  }
+
+  $('checkNowBtn').addEventListener('click', async () => {
+    const btn = $('checkNowBtn');
+    btn.disabled = true;
+    btn.textContent = 'Checking\u2026';
+    try {
+      await fetch('/api/check', { method: 'POST' });
+      await loadWatchlist();
+      btn.textContent = 'Checked \u2713';
+    } catch (err) {
+      btn.textContent = 'Check now';
+    } finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Check now'; }, 1500);
+    }
+  });
+
+  loadWatchlist();
+</script>
+</body>
+</html>
