@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
     const clauses = [];
     if (setId) clauses.push(`set.id:${setId}`);
     if (q) clauses.push(`name:${q}*`);
-    const cards = await searchCards(clauses.join(' '), 20);
+    const cards = await searchCards(clauses.join(' '), 75);
     const results = cards.map((c) => ({
       id: c.id,
       name: c.name,
