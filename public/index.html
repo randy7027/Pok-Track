@@ -69,7 +69,7 @@
 
   section.add-panel { position: relative; margin-bottom: 0.5rem; }
 
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], select {
     width: 100%;
     background: var(--ink-surface);
     border: 1px solid var(--line);
@@ -82,8 +82,19 @@
     transition: border-color 0.15s ease;
   }
 
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--brass) 50%), linear-gradient(135deg, var(--brass) 50%, transparent 50%);
+    background-position: calc(100% - 1.3rem) center, calc(100% - 1rem) center;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    margin-bottom: 0.6rem;
+  }
+  select:invalid, select.is-empty { color: var(--paper-muted); }
+
   input::placeholder { color: var(--paper-muted); }
-  input:focus-visible { border-color: var(--brass); }
+  input:focus-visible, select:focus-visible { border-color: var(--brass); }
 
   .search-results {
     position: relative;
@@ -301,7 +312,10 @@
     </header>
 
     <section class="add-panel">
-      <input type="text" id="searchInput" placeholder="Search a card — e.g. Charizard base set" autocomplete="off">
+      <select id="setSelect" class="is-empty">
+        <option value="">All sets</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="Search a card by name — e.g. Charizard" autocomplete="off">
       <div class="search-results" id="searchResults"></div>
     </section>
 
@@ -370,6 +384,34 @@
     return `${Math.round(hrs / 24)}d ago`;
   }
 
+  async function loadSets() {
+    try {
+      const res = await fetch('/api/sets');
+      const data = await res.json();
+      const sets = data.sets || [];
+
+      const seriesOrder = [];
+      const bySeries = {};
+      sets.forEach((s) => {
+        const series = s.series || 'Other';
+        if (!bySeries[series]) { bySeries[series] = []; seriesOrder.push(series); }
+        bySeries[series].push(s);
+      });
+
+      let html = '<option value="">All sets</option>';
+      seriesOrder.forEach((series) => {
+        html += `<optgroup label="${series}">`;
+        bySeries[series].forEach((s) => {
+          html += `<option value="${s.id}">${s.name}</option>`;
+        });
+        html += '</optgroup>';
+      });
+      $('setSelect').innerHTML = html;
+    } catch (err) {
+      // Set list is a nice-to-have — name search still works without it.
+    }
+  }
+
   async function loadWatchlist() {
     const res = await fetch('/api/watchlist');
     const data = await res.json();
@@ -423,16 +465,25 @@
   }
 
   let searchTimer = null;
-  $('searchInput').addEventListener('input', (e) => {
+  $('searchInput').addEventListener('input', () => {
     clearTimeout(searchTimer);
-    const q = e.target.value.trim();
-    if (q.length < 2) { $('searchResults').innerHTML = ''; return; }
-    searchTimer = setTimeout(() => doSearch(q), 350);
+    searchTimer = setTimeout(doSearch, 350);
+  });
+  $('setSelect').addEventListener('change', (e) => {
+    e.target.classList.toggle('is-empty', !e.target.value);
+    doSearch();
   });
 
-  async function doSearch(q) {
+  async function doSearch() {
+    const q = $('searchInput').value.trim();
+    const setId = $('setSelect').value;
+    if (q.length < 2 && !setId) { $('searchResults').innerHTML = ''; return; }
+
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (setId) params.set('set', setId);
+      const res = await fetch('/api/search?' + params.toString());
       const data = await res.json();
       const results = data.results || [];
       $('searchResults').innerHTML = results.map((r) => `
@@ -518,6 +569,7 @@
     }
   });
 
+  loadSets();
   loadWatchlist();
 </script>
 </body>
