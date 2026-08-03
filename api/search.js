@@ -2,14 +2,18 @@ const { searchCards, extractMarketPrice } = require('../lib/pokemontcg');
 
 module.exports = async (req, res) => {
   const q = (req.query.q || '').toString().trim();
+  const setId = (req.query.set || '').toString().trim();
 
-  if (!q) {
-    res.status(400).json({ error: 'Missing q parameter' });
+  if (!q && !setId) {
+    res.status(400).json({ error: 'Provide a name, a set, or both' });
     return;
   }
 
   try {
-    const cards = await searchCards(`name:${q}*`, 12);
+    const clauses = [];
+    if (setId) clauses.push(`set.id:${setId}`);
+    if (q) clauses.push(`name:${q}*`);
+    const cards = await searchCards(clauses.join(' '), 20);
     const results = cards.map((c) => ({
       id: c.id,
       name: c.name,
