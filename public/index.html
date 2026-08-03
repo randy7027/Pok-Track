@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — Card Price Watch</title>
+<script>
+  // Visit the site with ?debug=1 to get an on-page console (errors, network
+  // requests) — useful on a phone where there's no plugged-in dev tools.
+  if (new URLSearchParams(location.search).get('debug') === '1') {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+    s.onload = function () { eruda.init(); };
+    document.head.appendChild(s);
+  }
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -100,7 +110,8 @@
     position: relative;
     margin-top: 0.4rem;
     border-radius: 10px;
-    overflow: hidden;
+    overflow-y: auto;
+    max-height: 50vh;
     background: var(--ink-surface);
     border: 1px solid var(--line);
   }
@@ -413,10 +424,20 @@
   }
 
   async function loadWatchlist() {
-    const res = await fetch('/api/watchlist');
-    const data = await res.json();
-    state.cards = data.cards || [];
-    render();
+    try {
+      const res = await fetch('/api/watchlist');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      state.cards = data.cards || [];
+      $('emptyState').textContent = 'Nothing catalogued yet — search above to start watching a card.';
+      render();
+    } catch (err) {
+      state.cards = [];
+      $('cardList').innerHTML = '';
+      $('listCount').textContent = '0 tracked';
+      $('emptyState').textContent = 'Could not load your watchlist — ' + err.message;
+      $('emptyState').classList.remove('hidden');
+    }
   }
 
   function render() {
@@ -530,7 +551,7 @@
     $('tfSubmit').disabled = true;
     $('tfSubmit').textContent = 'Adding\u2026';
     try {
-      await fetch('/api/watchlist', {
+      const res = await fetch('/api/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -540,9 +561,13 @@
           alertOnLow: $('tfLow').checked
         })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       $('thresholdForm').classList.add('hidden');
       state.pendingCard = null;
       await loadWatchlist();
+    } catch (err) {
+      alert('Could not add this card: ' + err.message);
     } finally {
       $('tfSubmit').disabled = false;
       $('tfSubmit').textContent = 'Track this card';
@@ -550,8 +575,16 @@
   });
 
   async function removeCard(id) {
-    await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
-    await loadWatchlist();
+    try {
+      const res = await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      await loadWatchlist();
+    } catch (err) {
+      alert('Could not remove this card: ' + err.message);
+    }
   }
 
   $('checkNowBtn').addEventListener('click', async () => {
@@ -559,10 +592,13 @@
     btn.disabled = true;
     btn.textContent = 'Checking\u2026';
     try {
-      await fetch('/api/check', { method: 'POST' });
+      const res = await fetch('/api/check', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       await loadWatchlist();
       btn.textContent = 'Checked \u2713';
     } catch (err) {
+      alert('Check failed: ' + err.message);
       btn.textContent = 'Check now';
     } finally {
       setTimeout(() => { btn.disabled = false; btn.textContent = 'Check now'; }, 1500);
