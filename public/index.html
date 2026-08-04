@@ -117,6 +117,19 @@
   }
   .search-results:empty { display: none; border: none; }
 
+  .results-count {
+    position: sticky;
+    top: 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+    background: var(--ink-surface);
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+  }
+
   .result-row {
     display: flex;
     align-items: center;
@@ -245,6 +258,16 @@
   .card-price { font-family: var(--font-mono); font-size: 1.35rem; margin-top: 0.5rem; color: var(--paper); }
   .card-price .cur { font-size: 0.9rem; color: var(--paper-muted); }
 
+  .price-change {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--paper-muted);
+    vertical-align: middle;
+  }
+  .price-change.down { color: var(--brass-bright); }
+  .price-change.up { color: var(--paper-dim); }
+
   .card-meta {
     font-size: 0.76rem;
     color: var(--paper-muted);
@@ -273,17 +296,21 @@
     background: var(--brass-dim);
   }
 
-  .remove-btn {
+  .row-actions {
     position: absolute;
     bottom: 0.6rem;
     right: 0.7rem;
+    display: flex;
+    gap: 0.4rem;
+  }
+  .edit-btn, .remove-btn {
     background: transparent;
     color: var(--paper-muted);
     font-size: 0.72rem;
     padding: 0.3rem 0.5rem;
     min-height: auto;
   }
-  .remove-btn:hover { color: var(--brass-bright); }
+  .edit-btn:hover, .remove-btn:hover { color: var(--brass-bright); }
 
   .empty-state {
     text-align: center;
@@ -377,7 +404,7 @@
   </div>
 
 <script>
-  const state = { cards: [], pendingCard: null };
+  const state = { cards: [], pendingCard: null, editing: false };
   const $ = (id) => document.getElementById(id);
 
   function money(amount, currency) {
@@ -395,11 +422,20 @@
     return `${Math.round(hrs / 24)}d ago`;
   }
 
-  async function loadSets() {
+  async function loadSets(attempt) {
+    attempt = attempt || 1;
+    const select = $('setSelect');
+    if (attempt === 1) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">Loading sets\u2026</option>';
+    }
+
     try {
       const res = await fetch('/api/sets');
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       const sets = data.sets || [];
+      if (!sets.length) throw new Error('empty');
 
       const seriesOrder = [];
       const bySeries = {};
@@ -417,9 +453,16 @@
         });
         html += '</optgroup>';
       });
-      $('setSelect').innerHTML = html;
+      select.innerHTML = html;
+      select.disabled = false;
     } catch (err) {
-      // Set list is a nice-to-have — name search still works without it.
+      if (attempt < 3) {
+        setTimeout(() => loadSets(attempt + 1), 800 * attempt);
+        return;
+      }
+      select.innerHTML = '<option value="">All sets (list unavailable right now \u2014 name search still works)</option>';
+      select.disabled = false;
+
     }
   }
 
@@ -464,6 +507,15 @@
       const reasons = c.alertReasons && c.alertReasons.length
         ? `<div class="card-reasons">${c.alertReasons.join(' \u00b7 ')}</div>` : '';
 
+      let changeHtml = '';
+      if (typeof c.lastChangePercent === 'number') {
+        const up = c.lastChangePercent > 0;
+        const flat = Math.abs(c.lastChangePercent) < 0.05;
+        const arrow = flat ? '' : (up ? '\u25b2' : '\u25bc');
+        const cls = flat ? '' : (up ? 'up' : 'down');
+        changeHtml = `<span class="price-change ${cls}">${arrow} ${Math.abs(c.lastChangePercent).toFixed(1)}%</span>`;
+      }
+
       return `
         <div class="card-row ${c.alerting ? 'is-alerting' : ''}">
           <div class="stamp ${c.alerting ? 'hit' : ''}">${stampText}</div>
@@ -471,17 +523,26 @@
           <div class="card-main">
             <div class="card-name">${c.name}</div>
             <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}</div>
-            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'}</div>
+            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'} ${changeHtml}</div>
             <div class="card-meta">${metaBits.join(' \u00b7 ')}</div>
             ${reasons}
           </div>
-          <button class="remove-btn" data-id="${c.id}">Remove</button>
+          <div class="row-actions">
+            <button class="edit-btn" data-id="${c.id}">Edit</button>
+            <button class="remove-btn" data-id="${c.id}">Remove</button>
+          </div>
         </div>
       `;
     }).join('');
 
     list.querySelectorAll('.remove-btn').forEach((btn) => {
       btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openThresholdForm(c, true);
+      });
     });
   }
 
@@ -507,7 +568,9 @@
       const res = await fetch('/api/search?' + params.toString());
       const data = await res.json();
       const results = data.results || [];
-      $('searchResults').innerHTML = results.map((r) => `
+      const countHtml = results.length
+        ? `<div class="results-count">${results.length} card${results.length === 1 ? '' : 's'}</div>` : '';
+      $('searchResults').innerHTML = countHtml + results.map((r) => `
         <div class="result-row" data-id="${r.id}" tabindex="0">
           ${r.image ? `<img src="${r.image}" alt="">` : ''}
           <div class="result-info">
@@ -527,14 +590,16 @@
     }
   }
 
-  function openThresholdForm(card) {
+  function openThresholdForm(card, isEdit) {
     state.pendingCard = card;
+    state.editing = !!isEdit;
     $('tfImg').src = card.image || '';
     $('tfName').textContent = card.name;
     $('tfSet').textContent = `${card.set || ''}${card.number ? ' \u00b7 #' + card.number : ''}`;
-    $('tfTarget').value = '';
-    $('tfDip').value = '';
-    $('tfLow').checked = true;
+    $('tfTarget').value = isEdit && card.targetPrice != null ? card.targetPrice : '';
+    $('tfDip').value = isEdit && card.dipPercent != null ? card.dipPercent : '';
+    $('tfLow').checked = isEdit ? !!card.alertOnLow : true;
+    $('tfSubmit').textContent = isEdit ? 'Save changes' : 'Track this card';
     $('thresholdForm').classList.remove('hidden');
     $('searchResults').innerHTML = '';
     $('searchInput').value = '';
@@ -544,15 +609,17 @@
   $('tfCancel').addEventListener('click', () => {
     $('thresholdForm').classList.add('hidden');
     state.pendingCard = null;
+    state.editing = false;
   });
 
   $('tfSubmit').addEventListener('click', async () => {
     if (!state.pendingCard) return;
+    const isEdit = state.editing;
     $('tfSubmit').disabled = true;
-    $('tfSubmit').textContent = 'Adding\u2026';
+    $('tfSubmit').textContent = isEdit ? 'Saving\u2026' : 'Adding\u2026';
     try {
       const res = await fetch('/api/watchlist', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: state.pendingCard.id,
@@ -565,12 +632,13 @@
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       $('thresholdForm').classList.add('hidden');
       state.pendingCard = null;
+      state.editing = false;
       await loadWatchlist();
     } catch (err) {
-      alert('Could not add this card: ' + err.message);
+      alert(`Could not ${isEdit ? 'save changes to' : 'add'} this card: ` + err.message);
     } finally {
       $('tfSubmit').disabled = false;
-      $('tfSubmit').textContent = 'Track this card';
+      $('tfSubmit').textContent = isEdit ? 'Save changes' : 'Track this card';
     }
   });
 
