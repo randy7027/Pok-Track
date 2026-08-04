@@ -13,7 +13,10 @@ module.exports = async (req, res) => {
     const clauses = [];
     if (setId) clauses.push(`set.id:${setId}`);
     if (q) clauses.push(`name:${q}*`);
-    const cards = await searchCards(clauses.join(' '), 75);
+    // Browsing a whole set (set picked, no name typed) needs room for every
+    // card in it. Narrowing by name doesn't need nearly as many.
+    const pageSize = setId && !q ? 250 : 30;
+    const cards = await searchCards(clauses.join(' '), pageSize);
     const results = cards.map((c) => ({
       id: c.id,
       name: c.name,
@@ -22,7 +25,7 @@ module.exports = async (req, res) => {
       image: c.images ? c.images.small : null,
       price: extractMarketPrice(c)
     }));
-    res.status(200).json({ results });
+    res.status(200).json({ results, total: results.length });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

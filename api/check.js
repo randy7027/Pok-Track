@@ -6,8 +6,15 @@ const LIST_KEY = 'watchlist:ids';
 const MAX_HISTORY_POINTS = 90;
 
 module.exports = async (req, res) => {
-  const redis = getRedis();
-  const ids = (await redis.smembers(LIST_KEY)) || [];
+  let redis, ids;
+  try {
+    redis = getRedis();
+    ids = (await redis.smembers(LIST_KEY)) || [];
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+    return;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const results = [];
 
@@ -25,6 +32,9 @@ module.exports = async (req, res) => {
       }
 
       const price = priceInfo.price;
+      const previousPrice = typeof record.lastPrice === 'number' ? record.lastPrice : null;
+      const changePercent = previousPrice ? ((price - previousPrice) / previousPrice) * 100 : null;
+
       record.history = Array.isArray(record.history) ? record.history : [];
       record.history.push({ date: today, price });
       if (record.history.length > MAX_HISTORY_POINTS) {
@@ -69,6 +79,7 @@ module.exports = async (req, res) => {
 
       record.alerting = shouldAlert;
       record.alertReasons = reasons;
+      record.lastChangePercent = changePercent;
       record.lastPrice = price;
       record.lastChecked = new Date().toISOString();
 

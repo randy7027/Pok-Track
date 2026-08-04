@@ -12,9 +12,9 @@ async function parseJsonBody(req) {
 }
 
 module.exports = async (req, res) => {
-  const redis = getRedis();
-
   try {
+    const redis = getRedis();
+
     if (req.method === 'GET') {
       const ids = (await redis.smembers(LIST_KEY)) || [];
       const cards = [];
@@ -59,6 +59,7 @@ module.exports = async (req, res) => {
         history: priceInfo ? [{ date: today, price: priceInfo.price }] : [],
         lowestSeen: priceInfo ? priceInfo.price : null,
         lastPrice: priceInfo ? priceInfo.price : null,
+        lastChangePercent: null,
         lastChecked: new Date().toISOString(),
         alerting: false,
         alertReasons: []
@@ -67,6 +68,31 @@ module.exports = async (req, res) => {
       await redis.set(`card:${card.id}`, JSON.stringify(record));
       await redis.sadd(LIST_KEY, card.id);
 
+      res.status(200).json({ card: record });
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      const body = await parseJsonBody(req);
+      const { id, targetPrice, dipPercent, alertOnLow } = body;
+
+      if (!id) {
+        res.status(400).json({ error: 'Missing card id' });
+        return;
+      }
+
+      const raw = await redis.get(`card:${id}`);
+      if (!raw) {
+        res.status(404).json({ error: 'This card is not on your watchlist' });
+        return;
+      }
+      const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+      record.targetPrice = targetPrice !== '' && targetPrice != null ? Number(targetPrice) : null;
+      record.dipPercent = dipPercent !== '' && dipPercent != null ? Number(dipPercent) : null;
+      record.alertOnLow = !!alertOnLow;
+
+      await redis.set(`card:${id}`, JSON.stringify(record));
       res.status(200).json({ card: record });
       return;
     }
