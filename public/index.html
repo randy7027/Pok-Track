@@ -556,10 +556,15 @@
     doSearch();
   });
 
-  async function doSearch() {
+  async function doSearch(attempt) {
+    attempt = attempt || 1;
     const q = $('searchInput').value.trim();
     const setId = $('setSelect').value;
     if (q.length < 2 && !setId) { $('searchResults').innerHTML = ''; return; }
+
+    if (attempt === 1) {
+      $('searchResults').innerHTML = '<div class="results-count">Searching\u2026</div>';
+    }
 
     try {
       const params = new URLSearchParams();
@@ -567,6 +572,7 @@
       if (setId) params.set('set', setId);
       const res = await fetch('/api/search?' + params.toString());
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       const results = data.results || [];
       const countHtml = results.length
         ? `<div class="results-count">${results.length} card${results.length === 1 ? '' : 's'}</div>` : '';
@@ -586,7 +592,11 @@
         row.addEventListener('click', () => openThresholdForm(match));
       });
     } catch (err) {
-      $('searchResults').innerHTML = `<div class="result-row">Search failed — try again</div>`;
+      if (attempt < 2) {
+        setTimeout(() => doSearch(attempt + 1), 900);
+        return;
+      }
+      $('searchResults').innerHTML = `<div class="result-row">Search failed \u2014 ${err.message}</div>`;
     }
   }
 
