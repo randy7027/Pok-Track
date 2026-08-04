@@ -145,6 +145,7 @@
   .result-name { font-size: 0.92rem; }
   .result-set { font-size: 0.76rem; color: var(--paper-muted); }
   .result-price { font-family: var(--font-mono); font-size: 0.85rem; color: var(--brass-bright); white-space: nowrap; }
+  .result-price .no-price { color: var(--paper-muted); font-family: var(--font-body); font-size: 0.7rem; font-style: italic; }
 
   .threshold-form {
     background: var(--ink-surface);
@@ -583,7 +584,7 @@
             <div class="result-name">${r.name}</div>
             <div class="result-set">${r.set || ''}${r.number ? ' \u00b7 #' + r.number : ''}</div>
           </div>
-          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : ''}</div>
+          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : '<span class="no-price">no price data</span>'}</div>
         </div>
       `).join('');
 
