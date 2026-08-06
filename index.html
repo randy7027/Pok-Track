@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — Card Price Watch</title>
+<script>
+  // Visit the site with ?debug=1 to get an on-page console (errors, network
+  // requests) — useful on a phone where there's no plugged-in dev tools.
+  if (new URLSearchParams(location.search).get('debug') === '1') {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+    s.onload = function () { eruda.init(); };
+    document.head.appendChild(s);
+  }
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -69,7 +79,7 @@
 
   section.add-panel { position: relative; margin-bottom: 0.5rem; }
 
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], select {
     width: 100%;
     background: var(--ink-surface);
     border: 1px solid var(--line);
@@ -82,18 +92,43 @@
     transition: border-color 0.15s ease;
   }
 
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--brass) 50%), linear-gradient(135deg, var(--brass) 50%, transparent 50%);
+    background-position: calc(100% - 1.3rem) center, calc(100% - 1rem) center;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    margin-bottom: 0.6rem;
+  }
+  select:invalid, select.is-empty { color: var(--paper-muted); }
+
   input::placeholder { color: var(--paper-muted); }
-  input:focus-visible { border-color: var(--brass); }
+  input:focus-visible, select:focus-visible { border-color: var(--brass); }
 
   .search-results {
     position: relative;
     margin-top: 0.4rem;
     border-radius: 10px;
-    overflow: hidden;
+    overflow-y: auto;
+    max-height: 50vh;
     background: var(--ink-surface);
     border: 1px solid var(--line);
   }
   .search-results:empty { display: none; border: none; }
+
+  .results-count {
+    position: sticky;
+    top: 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+    background: var(--ink-surface);
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+  }
 
   .result-row {
     display: flex;
@@ -110,6 +145,7 @@
   .result-name { font-size: 0.92rem; }
   .result-set { font-size: 0.76rem; color: var(--paper-muted); }
   .result-price { font-family: var(--font-mono); font-size: 0.85rem; color: var(--brass-bright); white-space: nowrap; }
+  .result-price .no-price { color: var(--paper-muted); font-family: var(--font-body); font-size: 0.7rem; font-style: italic; }
 
   .threshold-form {
     background: var(--ink-surface);
@@ -129,8 +165,47 @@
     border-bottom: 1px solid var(--line);
   }
   .tf-card img { width: 40px; height: 55px; object-fit: cover; border-radius: 4px; }
-  .tf-card-name { font-family: var(--font-display); font-size: 1.1rem; }
-  .tf-card-set { font-size: 0.78rem; color: var(--paper-muted); }
+  .tf-card-fields { flex: 1; min-width: 0; }
+  .tf-name-input {
+    display: block;
+    width: 100%;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--paper);
+    padding: 0.1rem 0;
+  }
+  .tf-set-input {
+    display: block;
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    color: var(--paper-muted);
+    background: transparent;
+    border: none;
+    padding: 0.1rem 0;
+    margin-top: 0.1rem;
+  }
+  .tf-name-input:not([readonly]), .tf-set-input:not([readonly]) { border-bottom: 1px dashed var(--line); }
+  .tf-name-input[readonly], .tf-set-input[readonly] { pointer-events: none; }
+  #tfPriceField.hidden { display: none; }
+
+  .manual-add-link {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: none;
+    color: var(--paper-muted);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    text-decoration: underline;
+    padding: 0.6rem;
+    margin-top: 0.2rem;
+  }
+  .manual-add-link:hover { color: var(--brass-bright); }
 
   .tf-field { margin-bottom: 0.85rem; }
   .tf-field label {
@@ -223,6 +298,16 @@
   .card-price { font-family: var(--font-mono); font-size: 1.35rem; margin-top: 0.5rem; color: var(--paper); }
   .card-price .cur { font-size: 0.9rem; color: var(--paper-muted); }
 
+  .price-change {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--paper-muted);
+    vertical-align: middle;
+  }
+  .price-change.down { color: var(--brass-bright); }
+  .price-change.up { color: var(--paper-dim); }
+
   .card-meta {
     font-size: 0.76rem;
     color: var(--paper-muted);
@@ -251,17 +336,21 @@
     background: var(--brass-dim);
   }
 
-  .remove-btn {
+  .row-actions {
     position: absolute;
     bottom: 0.6rem;
     right: 0.7rem;
+    display: flex;
+    gap: 0.4rem;
+  }
+  .edit-btn, .remove-btn {
     background: transparent;
     color: var(--paper-muted);
     font-size: 0.72rem;
     padding: 0.3rem 0.5rem;
     min-height: auto;
   }
-  .remove-btn:hover { color: var(--brass-bright); }
+  .edit-btn:hover, .remove-btn:hover { color: var(--brass-bright); }
 
   .empty-state {
     text-align: center;
@@ -301,17 +390,26 @@
     </header>
 
     <section class="add-panel">
-      <input type="text" id="searchInput" placeholder="Search a card — e.g. Charizard base set" autocomplete="off">
+      <select id="setSelect" class="is-empty">
+        <option value="">All sets</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="Search a card by name — e.g. Charizard" autocomplete="off">
       <div class="search-results" id="searchResults"></div>
+      <button type="button" class="manual-add-link" id="manualAddBtn">Can't find it? Add it manually</button>
     </section>
 
     <div class="threshold-form hidden" id="thresholdForm">
       <div class="tf-card">
         <img id="tfImg" alt="">
-        <div>
-          <div class="tf-card-name" id="tfName"></div>
-          <div class="tf-card-set" id="tfSet"></div>
+        <div class="tf-card-fields">
+          <input type="text" id="tfName" class="tf-name-input" placeholder="Card name">
+          <input type="text" id="tfSet" class="tf-set-input" placeholder="Set (optional)">
         </div>
+      </div>
+
+      <div class="tf-field hidden" id="tfPriceField">
+        <label for="tfPrice">Current price ($)</label>
+        <input type="number" id="tfPrice" inputmode="decimal" placeholder="e.g. 45.00" min="0" step="0.01">
       </div>
 
       <div class="tf-field">
@@ -352,7 +450,7 @@
   </div>
 
 <script>
-  const state = { cards: [], pendingCard: null };
+  const state = { cards: [], pendingCard: null, editing: false, manualMode: false };
   const $ = (id) => document.getElementById(id);
 
   function money(amount, currency) {
@@ -370,11 +468,65 @@
     return `${Math.round(hrs / 24)}d ago`;
   }
 
+  async function loadSets(attempt) {
+    attempt = attempt || 1;
+    const select = $('setSelect');
+    if (attempt === 1) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">Loading sets\u2026</option>';
+    }
+
+    try {
+      const res = await fetch('/api/sets');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      const sets = data.sets || [];
+      if (!sets.length) throw new Error('empty');
+
+      const seriesOrder = [];
+      const bySeries = {};
+      sets.forEach((s) => {
+        const series = s.series || 'Other';
+        if (!bySeries[series]) { bySeries[series] = []; seriesOrder.push(series); }
+        bySeries[series].push(s);
+      });
+
+      let html = '<option value="">All sets</option>';
+      seriesOrder.forEach((series) => {
+        html += `<optgroup label="${series}">`;
+        bySeries[series].forEach((s) => {
+          html += `<option value="${s.id}">${s.name}</option>`;
+        });
+        html += '</optgroup>';
+      });
+      select.innerHTML = html;
+      select.disabled = false;
+    } catch (err) {
+      if (attempt < 3) {
+        setTimeout(() => loadSets(attempt + 1), 800 * attempt);
+        return;
+      }
+      select.innerHTML = '<option value="">All sets (list unavailable right now \u2014 name search still works)</option>';
+      select.disabled = false;
+
+    }
+  }
+
   async function loadWatchlist() {
-    const res = await fetch('/api/watchlist');
-    const data = await res.json();
-    state.cards = data.cards || [];
-    render();
+    try {
+      const res = await fetch('/api/watchlist');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      state.cards = data.cards || [];
+      $('emptyState').textContent = 'Nothing catalogued yet — search above to start watching a card.';
+      render();
+    } catch (err) {
+      state.cards = [];
+      $('cardList').innerHTML = '';
+      $('listCount').textContent = '0 tracked';
+      $('emptyState').textContent = 'Could not load your watchlist — ' + err.message;
+      $('emptyState').classList.remove('hidden');
+    }
   }
 
   function render() {
@@ -395,11 +547,20 @@
       if (c.dipPercent != null) metaBits.push(`${c.dipPercent}% dip`);
       if (c.alertOnLow) metaBits.push('watching for new low');
       if (c.lowestSeen != null) metaBits.push(`lowest seen ${c.currency === 'EUR' ? '\u20AC' : '$'}${Number(c.lowestSeen).toFixed(2)}`);
-      metaBits.push(`checked ${timeAgo(c.lastChecked)}`);
+      metaBits.push(c.manual ? 'manually tracked \u2014 edit to update price' : `checked ${timeAgo(c.lastChecked)}`);
 
       const stampText = c.alerting ? 'Buy signal' : 'Watching';
       const reasons = c.alertReasons && c.alertReasons.length
         ? `<div class="card-reasons">${c.alertReasons.join(' \u00b7 ')}</div>` : '';
+
+      let changeHtml = '';
+      if (typeof c.lastChangePercent === 'number') {
+        const up = c.lastChangePercent > 0;
+        const flat = Math.abs(c.lastChangePercent) < 0.05;
+        const arrow = flat ? '' : (up ? '\u25b2' : '\u25bc');
+        const cls = flat ? '' : (up ? 'up' : 'down');
+        changeHtml = `<span class="price-change ${cls}">${arrow} ${Math.abs(c.lastChangePercent).toFixed(1)}%</span>`;
+      }
 
       return `
         <div class="card-row ${c.alerting ? 'is-alerting' : ''}">
@@ -408,11 +569,14 @@
           <div class="card-main">
             <div class="card-name">${c.name}</div>
             <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}</div>
-            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'}</div>
+            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'} ${changeHtml}</div>
             <div class="card-meta">${metaBits.join(' \u00b7 ')}</div>
             ${reasons}
           </div>
-          <button class="remove-btn" data-id="${c.id}">Remove</button>
+          <div class="row-actions">
+            <button class="edit-btn" data-id="${c.id}">Edit</button>
+            <button class="remove-btn" data-id="${c.id}">Remove</button>
+          </div>
         </div>
       `;
     }).join('');
@@ -420,29 +584,52 @@
     list.querySelectorAll('.remove-btn').forEach((btn) => {
       btn.addEventListener('click', () => removeCard(btn.dataset.id));
     });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openThresholdForm(c, 'edit');
+      });
+    });
   }
 
   let searchTimer = null;
-  $('searchInput').addEventListener('input', (e) => {
+  $('searchInput').addEventListener('input', () => {
     clearTimeout(searchTimer);
-    const q = e.target.value.trim();
-    if (q.length < 2) { $('searchResults').innerHTML = ''; return; }
-    searchTimer = setTimeout(() => doSearch(q), 350);
+    searchTimer = setTimeout(doSearch, 350);
+  });
+  $('setSelect').addEventListener('change', (e) => {
+    e.target.classList.toggle('is-empty', !e.target.value);
+    doSearch();
   });
 
-  async function doSearch(q) {
+  async function doSearch(attempt) {
+    attempt = attempt || 1;
+    const q = $('searchInput').value.trim();
+    const setId = $('setSelect').value;
+    if (q.length < 2 && !setId) { $('searchResults').innerHTML = ''; return; }
+
+    if (attempt === 1) {
+      $('searchResults').innerHTML = '<div class="results-count">Searching\u2026</div>';
+    }
+
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (setId) params.set('set', setId);
+      const res = await fetch('/api/search?' + params.toString());
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       const results = data.results || [];
-      $('searchResults').innerHTML = results.map((r) => `
+      const countHtml = results.length
+        ? `<div class="results-count">${results.length} card${results.length === 1 ? '' : 's'}</div>` : '';
+      $('searchResults').innerHTML = countHtml + results.map((r) => `
         <div class="result-row" data-id="${r.id}" tabindex="0">
           ${r.image ? `<img src="${r.image}" alt="">` : ''}
           <div class="result-info">
             <div class="result-name">${r.name}</div>
             <div class="result-set">${r.set || ''}${r.number ? ' \u00b7 #' + r.number : ''}</div>
           </div>
-          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : ''}</div>
+          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : '<span class="no-price">no price data</span>'}</div>
         </div>
       `).join('');
 
@@ -451,56 +638,113 @@
         row.addEventListener('click', () => openThresholdForm(match));
       });
     } catch (err) {
-      $('searchResults').innerHTML = `<div class="result-row">Search failed — try again</div>`;
+      if (attempt < 2) {
+        setTimeout(() => doSearch(attempt + 1), 900);
+        return;
+      }
+      $('searchResults').innerHTML = `<div class="result-row">Search failed \u2014 ${err.message}</div>`;
     }
   }
 
-  function openThresholdForm(card) {
+  function openThresholdForm(card, mode) {
+    card = card || {};
     state.pendingCard = card;
+    state.editing = mode === 'edit';
+    state.manualMode = mode === 'manual' || (mode === 'edit' && !!card.manual);
+
     $('tfImg').src = card.image || '';
-    $('tfName').textContent = card.name;
-    $('tfSet').textContent = `${card.set || ''}${card.number ? ' \u00b7 #' + card.number : ''}`;
-    $('tfTarget').value = '';
-    $('tfDip').value = '';
-    $('tfLow').checked = true;
+    $('tfImg').style.visibility = card.image ? 'visible' : 'hidden';
+    $('tfName').value = card.name || '';
+    $('tfSet').value = card.set || '';
+    $('tfName').readOnly = !state.manualMode;
+    $('tfSet').readOnly = !state.manualMode;
+
+    $('tfPriceField').classList.toggle('hidden', !state.manualMode);
+    $('tfPrice').value = state.editing && card.lastPrice != null ? card.lastPrice : '';
+
+    $('tfTarget').value = state.editing && card.targetPrice != null ? card.targetPrice : '';
+    $('tfDip').value = state.editing && card.dipPercent != null ? card.dipPercent : '';
+    $('tfLow').checked = state.editing ? !!card.alertOnLow : true;
+    $('tfSubmit').textContent = state.editing ? 'Save changes' : 'Track this card';
+
     $('thresholdForm').classList.remove('hidden');
     $('searchResults').innerHTML = '';
     $('searchInput').value = '';
     $('thresholdForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (state.manualMode) $('tfName').focus();
   }
+
+  $('manualAddBtn').addEventListener('click', () => openThresholdForm(null, 'manual'));
 
   $('tfCancel').addEventListener('click', () => {
     $('thresholdForm').classList.add('hidden');
     state.pendingCard = null;
+    state.editing = false;
+    state.manualMode = false;
   });
 
   $('tfSubmit').addEventListener('click', async () => {
-    if (!state.pendingCard) return;
+    const isEdit = state.editing;
+    const isManual = state.manualMode;
+    const name = $('tfName').value.trim();
+
+    if (!isEdit && isManual && !name) {
+      alert('Enter a card name first.');
+      return;
+    }
+    if (!isEdit && !isManual && !state.pendingCard.id) return;
+
     $('tfSubmit').disabled = true;
-    $('tfSubmit').textContent = 'Adding\u2026';
+    $('tfSubmit').textContent = isEdit ? 'Saving\u2026' : 'Adding\u2026';
     try {
-      await fetch('/api/watchlist', {
-        method: 'POST',
+      const payload = {
+        targetPrice: $('tfTarget').value || null,
+        dipPercent: $('tfDip').value || null,
+        alertOnLow: $('tfLow').checked
+      };
+      if (isEdit) {
+        payload.id = state.pendingCard.id;
+        if (isManual) payload.price = $('tfPrice').value || null;
+      } else if (isManual) {
+        payload.manual = true;
+        payload.name = name;
+        payload.set = $('tfSet').value.trim();
+        payload.price = $('tfPrice').value || null;
+      } else {
+        payload.id = state.pendingCard.id;
+      }
+
+      const res = await fetch('/api/watchlist', {
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: state.pendingCard.id,
-          targetPrice: $('tfTarget').value || null,
-          dipPercent: $('tfDip').value || null,
-          alertOnLow: $('tfLow').checked
-        })
+        body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       $('thresholdForm').classList.add('hidden');
       state.pendingCard = null;
+      state.editing = false;
+      state.manualMode = false;
       await loadWatchlist();
+    } catch (err) {
+      alert(`Could not ${isEdit ? 'save changes to' : 'add'} this card: ` + err.message);
     } finally {
       $('tfSubmit').disabled = false;
-      $('tfSubmit').textContent = 'Track this card';
+      $('tfSubmit').textContent = isEdit ? 'Save changes' : 'Track this card';
     }
   });
 
   async function removeCard(id) {
-    await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
-    await loadWatchlist();
+    try {
+      const res = await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      await loadWatchlist();
+    } catch (err) {
+      alert('Could not remove this card: ' + err.message);
+    }
   }
 
   $('checkNowBtn').addEventListener('click', async () => {
@@ -508,16 +752,31 @@
     btn.disabled = true;
     btn.textContent = 'Checking\u2026';
     try {
-      await fetch('/api/check', { method: 'POST' });
+      const res = await fetch('/api/check', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       await loadWatchlist();
-      btn.textContent = 'Checked \u2713';
+
+      const failures = (data.results || []).filter((r) => r.error);
+      if (failures.length) {
+        btn.textContent = `Checked \u2014 ${failures.length} failed`;
+        const lines = failures.map((f) => {
+          const c = state.cards.find((card) => card.id === f.id);
+          return `${c ? c.name : f.id}: ${f.error}`;
+        });
+        alert(`${failures.length} card(s) didn't update this time:\n\n${lines.join('\n')}`);
+      } else {
+        btn.textContent = 'Checked \u2713';
+      }
     } catch (err) {
+      alert('Check failed: ' + err.message);
       btn.textContent = 'Check now';
     } finally {
       setTimeout(() => { btn.disabled = false; btn.textContent = 'Check now'; }, 1500);
     }
   });
 
+  loadSets();
   loadWatchlist();
 </script>
 </body>
