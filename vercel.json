@@ -4,5 +4,10 @@
       "path": "/api/check",
       "schedule": "0 13 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/check.js": {
+      "maxDuration": 30
+    }
+  }
 }
