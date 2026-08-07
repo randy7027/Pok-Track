@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, manual, name, set, price } = body;
+      const { id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image } = body;
       const today = new Date().toISOString().slice(0, 10);
       let record;
 
@@ -44,14 +44,18 @@ module.exports = async (req, res) => {
           res.status(400).json({ error: 'Missing card name' });
           return;
         }
+        if (!set) {
+          res.status(400).json({ error: 'Missing set' });
+          return;
+        }
         const manualId = 'manual:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
         const startPrice = toNumberOrNull(price);
         record = {
           id: manualId,
           name: name,
-          set: set || '',
+          set: set,
           number: '',
-          image: null,
+          image: image || null,
           manual: true,
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
@@ -105,7 +109,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PATCH') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, price } = body;
+      const { id, targetPrice, dipPercent, alertOnLow, price, set, image } = body;
 
       if (!id) {
         res.status(400).json({ error: 'Missing card id' });
@@ -122,6 +126,11 @@ module.exports = async (req, res) => {
       record.targetPrice = toNumberOrNull(targetPrice);
       record.dipPercent = toNumberOrNull(dipPercent);
       record.alertOnLow = !!alertOnLow;
+
+      if (record.manual) {
+        if (set) record.set = set;
+        if (image !== undefined) record.image = image || null;
+      }
 
       // Manual cards have no automatic price feed -- editing is also how
       // their price gets refreshed, so re-run the same alert logic the
