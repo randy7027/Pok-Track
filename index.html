@@ -267,6 +267,7 @@
     text-transform: uppercase;
     color: var(--paper-muted);
   }
+  .header-btns { display: flex; gap: 0.5rem; }
 
   .card-list { display: flex; flex-direction: column; gap: 0.7rem; }
 
@@ -438,7 +439,10 @@
 
     <div class="list-header">
       <span id="listCount">0 tracked</span>
-      <button class="ghost-btn" id="checkNowBtn">Check now</button>
+      <div class="header-btns">
+        <button class="ghost-btn" id="exportBtn">Export CSV</button>
+        <button class="ghost-btn" id="checkNowBtn">Check now</button>
+      </div>
     </div>
 
     <div class="card-list" id="cardList"></div>
@@ -732,6 +736,72 @@
       $('tfSubmit').disabled = false;
       $('tfSubmit').textContent = isEdit ? 'Save changes' : 'Track this card';
     }
+  });
+
+  function findHistoricalPrice(history, daysAgo) {
+    if (!Array.isArray(history) || !history.length) return null;
+    const target = new Date();
+    target.setDate(target.getDate() - daysAgo);
+    const targetTime = target.getTime();
+
+    let closest = null;
+    let closestDiff = Infinity;
+    history.forEach((point) => {
+      const diff = Math.abs(new Date(point.date).getTime() - targetTime);
+      if (diff < closestDiff) { closestDiff = diff; closest = point; }
+    });
+    // Only use it if there's actually a point roughly near that date --
+    // otherwise a 3-day-old watchlist entry would misleadingly borrow
+    // its only data point as a stand-in for "30 days ago."
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    return (closest && closestDiff <= threeDaysMs) ? closest.price : null;
+  }
+
+  function csvField(value) {
+    if (value == null) return '';
+    const str = String(value);
+    return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+  }
+
+  function exportCsv() {
+    const headers = ['Name', 'Set', 'Currency', 'Current Price', 'Target Price', 'Target Dip %', '7 Days Ago', '7 Day %', '30 Days Ago', '30 Day %'];
+    const rows = [headers];
+
+    state.cards.forEach((c) => {
+      const price7 = findHistoricalPrice(c.history, 7);
+      const price30 = findHistoricalPrice(c.history, 30);
+      const pct7 = (price7 != null && c.lastPrice != null) ? (((c.lastPrice - price7) / price7) * 100).toFixed(1) : '';
+      const pct30 = (price30 != null && c.lastPrice != null) ? (((c.lastPrice - price30) / price30) * 100).toFixed(1) : '';
+
+      rows.push([
+        c.name,
+        c.set || '',
+        c.currency || 'USD',
+        c.lastPrice != null ? c.lastPrice : '',
+        c.targetPrice != null ? c.targetPrice : '',
+        c.dipPercent != null ? c.dipPercent : '',
+        price7 != null ? price7 : '',
+        pct7,
+        price30 != null ? price30 : '',
+        pct30
+      ]);
+    });
+
+    const csv = rows.map((row) => row.map(csvField).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `card-watchlist-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  $('exportBtn').addEventListener('click', () => {
+    if (!state.cards.length) { alert('Nothing tracked yet to export.'); return; }
+    exportCsv();
   });
 
   async function removeCard(id) {
