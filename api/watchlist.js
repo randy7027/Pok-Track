@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image } = body;
+      const { id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image, category } = body;
       const today = new Date().toISOString().slice(0, 10);
       let record;
 
@@ -57,6 +57,7 @@ module.exports = async (req, res) => {
           number: '',
           image: image || null,
           manual: true,
+          category: category === 'investing' ? 'investing' : 'watching',
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
           alertOnLow: !!alertOnLow,
@@ -87,6 +88,7 @@ module.exports = async (req, res) => {
           number: card.number,
           image: card.images ? card.images.small : null,
           manual: false,
+          category: category === 'investing' ? 'investing' : 'watching',
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
           alertOnLow: !!alertOnLow,
@@ -109,7 +111,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PATCH') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, price, set, image } = body;
+      const { id, targetPrice, dipPercent, alertOnLow, price, set, image, category } = body;
 
       if (!id) {
         res.status(400).json({ error: 'Missing card id' });
@@ -123,9 +125,13 @@ module.exports = async (req, res) => {
       }
       const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
-      record.targetPrice = toNumberOrNull(targetPrice);
-      record.dipPercent = toNumberOrNull(dipPercent);
-      record.alertOnLow = !!alertOnLow;
+      // Only fields actually present in the request are touched -- this lets
+      // a quick price-only update (from the investing table) leave every
+      // other setting exactly as it was.
+      if (targetPrice !== undefined) record.targetPrice = toNumberOrNull(targetPrice);
+      if (dipPercent !== undefined) record.dipPercent = toNumberOrNull(dipPercent);
+      if (alertOnLow !== undefined) record.alertOnLow = !!alertOnLow;
+      if (category !== undefined) record.category = category === 'investing' ? 'investing' : 'watching';
 
       if (record.manual) {
         if (set) record.set = set;
@@ -135,7 +141,7 @@ module.exports = async (req, res) => {
       // Manual cards have no automatic price feed -- editing is also how
       // their price gets refreshed, so re-run the same alert logic the
       // daily check uses whenever a new price comes in.
-      if (record.manual) {
+      if (record.manual && price !== undefined) {
         const newPrice = toNumberOrNull(price);
         if (newPrice != null) {
           const today = new Date().toISOString().slice(0, 10);
