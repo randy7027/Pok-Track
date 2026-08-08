@@ -15,7 +15,7 @@ async function checkOne(redis, id, today) {
     return { id, skipped: 'manually tracked -- update its price by editing it' };
   }
 
-  const card = await getCard(id);
+  const card = await getCard(record.cardRef || id);
   const priceInfo = extractMarketPrice(card);
   if (!priceInfo) return { id, skipped: 'no price data available' };
 

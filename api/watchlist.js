@@ -81,8 +81,14 @@ module.exports = async (req, res) => {
           return;
         }
         const priceInfo = extractMarketPrice(card);
+        // A unique entry ID (not just the card ID) so the same real card can
+        // have separate, independent entries -- e.g. one in Watching and a
+        // different one in Investing, each with their own price history and
+        // thresholds.
+        const entryId = card.id + '::' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         record = {
-          id: card.id,
+          id: entryId,
+          cardRef: card.id,
           name: card.name,
           set: (card.set && card.set.name) || '',
           number: card.localId || '',
