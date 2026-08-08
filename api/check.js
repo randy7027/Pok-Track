@@ -35,22 +35,31 @@ async function checkOne(redis, id, today) {
   const wasAlerting = !!record.alerting;
   const justCrossed = shouldAlert && !wasAlerting;
 
-  if (justCrossed) {
-    const symbol = priceInfo.currency === 'EUR' ? '\u20AC' : '$';
-    await sendPush(
-      `${record.name} \u2014 ${symbol}${price.toFixed(2)}`,
-      `${reasons.join(' and ')}.`
-    );
-  }
-
   record.alerting = shouldAlert;
   record.alertReasons = reasons;
   record.lastChangePercent = changePercent;
   record.lastPrice = price;
   record.lastChecked = new Date().toISOString();
 
+  // Save first, notify second -- a notification failure (bad character,
+  // ntfy being down, whatever) should never cost the card its price update.
   await redis.set(`card:${id}`, JSON.stringify(record));
-  return { id, price, notified: justCrossed };
+
+  let notified = false;
+  if (justCrossed) {
+    try {
+      const symbol = priceInfo.currency === 'EUR' ? 'EUR ' : '$';
+      await sendPush(
+        `${record.name} - ${symbol}${price.toFixed(2)}`,
+        `${reasons.join(' and ')}.`
+      );
+      notified = true;
+    } catch (pushErr) {
+      // Price is already saved above; just note the push didn't go out.
+    }
+  }
+
+  return { id, price, notified };
 }
 
 module.exports = async (req, res) => {

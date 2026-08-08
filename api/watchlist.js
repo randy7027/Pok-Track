@@ -1,5 +1,5 @@
 const { getRedis } = require('../lib/redis');
-const { getCard, extractMarketPrice } = require('../lib/pokemontcg');
+const { getCard, extractMarketPrice, imageUrl } = require('../lib/pokemontcg');
 const { evaluateCard } = require('../lib/alerts');
 
 const LIST_KEY = 'watchlist:ids';
@@ -84,9 +84,9 @@ module.exports = async (req, res) => {
         record = {
           id: card.id,
           name: card.name,
-          set: card.set ? card.set.name : '',
-          number: card.number,
-          image: card.images ? card.images.small : null,
+          set: (card.set && card.set.name) || '',
+          number: card.localId || '',
+          image: imageUrl(card.image, 'low'),
           manual: false,
           category: category === 'investing' ? 'investing' : 'watching',
           targetPrice: toNumberOrNull(targetPrice),

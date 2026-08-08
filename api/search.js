@@ -1,4 +1,4 @@
-const { searchCards, extractMarketPrice } = require('../lib/pokemontcg');
+const { searchCards, getSet, imageUrl } = require('../lib/pokemontcg');
 
 module.exports = async (req, res) => {
   const q = (req.query.q || '').toString().trim();
@@ -10,21 +10,33 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const clauses = [];
-    if (setId) clauses.push(`set.id:${setId}`);
-    if (q) clauses.push(`name:${q}*`);
-    // Browsing a whole set (set picked, no name typed) needs room for every
-    // card in it. Narrowing by name doesn't need nearly as many.
-    const pageSize = setId && !q ? 250 : 30;
-    const cards = await searchCards(clauses.join(' '), pageSize);
-    const results = cards.map((c) => ({
+    let cards = [];
+    let setName = '';
+
+    if (setId) {
+      const set = await getSet(setId);
+      cards = set.cards || [];
+      setName = set.name || '';
+      if (q) {
+        const needle = q.toLowerCase();
+        cards = cards.filter((c) => c.name && c.name.toLowerCase().includes(needle));
+      }
+    } else {
+      cards = await searchCards(q);
+    }
+
+    // TCGdex's list/brief endpoints don't include pricing (only a full
+    // single-card lookup does) -- results show name/image only, price
+    // fills in once a card is actually tracked.
+    const results = cards.slice(0, 250).map((c) => ({
       id: c.id,
       name: c.name,
-      set: c.set ? c.set.name : '',
-      number: c.number,
-      image: c.images ? c.images.small : null,
-      price: extractMarketPrice(c)
+      set: setName,
+      number: c.localId || '',
+      image: imageUrl(c.image, 'low'),
+      price: null
     }));
+
     res.status(200).json({ results, total: results.length });
   } catch (err) {
     res.status(502).json({ error: err.message });

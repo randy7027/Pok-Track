@@ -6,8 +6,8 @@ module.exports = async (req, res) => {
     const results = sets.map((s) => ({
       id: s.id,
       name: s.name,
-      series: s.series || 'Other',
-      releaseDate: s.releaseDate
+      series: (s.serie && s.serie.name) || 'Other',
+      releaseDate: s.releaseDate || ''
     }));
     res.status(200).json({ sets: results });
   } catch (err) {
