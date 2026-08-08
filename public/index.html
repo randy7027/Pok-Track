@@ -248,6 +248,20 @@
   }
   .tf-checkbox input { width: auto; accent-color: var(--brass); }
 
+  .tf-category { display: flex; gap: 0.5rem; }
+  .tf-cat-btn {
+    flex: 1;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    color: var(--paper-muted);
+    font-size: 0.78rem;
+    padding: 0.55rem 0.5rem;
+    min-height: auto;
+    border-radius: 8px;
+  }
+  .tf-cat-btn.active { border-color: var(--brass); color: var(--brass-bright); background: var(--brass-dim); }
+
+
   .tf-actions { display: flex; gap: 0.6rem; margin-top: 1.1rem; }
 
   button {
@@ -278,6 +292,58 @@
   }
   .ghost-btn:hover { border-color: var(--brass); color: var(--brass-bright); }
   .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .tabs {
+    display: flex;
+    margin-top: 1.8rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--paper-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.7rem 0.5rem;
+    border-radius: 0;
+    min-height: auto;
+  }
+  .tab-btn.active { color: var(--brass-bright); border-bottom-color: var(--brass); }
+
+  .invest-row {
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 0.7rem;
+  }
+  .invest-row.is-alerting { border-top-color: var(--brass); }
+  .invest-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.7rem; gap: 0.5rem; }
+  .invest-name { font-family: var(--font-display); font-size: 1.05rem; }
+  .invest-set { font-size: 0.74rem; color: var(--paper-muted); margin-top: 0.1rem; }
+  .invest-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
+  .invest-actions button { padding: 0.3rem 0.5rem; font-size: 0.72rem; min-height: auto; background: transparent; color: var(--paper-muted); }
+  .invest-actions button:hover { color: var(--brass-bright); }
+  .invest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem 0.4rem; font-family: var(--font-mono); }
+  .invest-cell .lbl { display: block; font-size: 0.58rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--paper-muted); margin-bottom: 0.15rem; }
+  .invest-cell .val { font-size: 0.88rem; color: var(--paper); }
+  .invest-cell .val.up { color: var(--paper-dim); }
+  .invest-cell .val.down { color: var(--brass-bright); }
+  .invest-update {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--line);
+  }
+  .invest-update input { flex: 1; padding: 0.5rem 0.6rem; font-size: 0.85rem; }
+  .invest-update button { padding: 0.5rem 0.8rem; min-height: auto; font-size: 0.8rem; background: var(--brass); color: #14170F; font-weight: 600; }
+  .invest-hint { font-size: 0.7rem; color: var(--paper-muted); margin-top: 0.6rem; font-style: italic; }
 
   .list-header {
     display: flex;
@@ -462,10 +528,23 @@
         </label>
       </div>
 
+      <div class="tf-field">
+        <label>Category</label>
+        <div class="tf-category">
+          <button type="button" class="tf-cat-btn active" data-cat="watching" id="catWatchingBtn">Watching to buy</button>
+          <button type="button" class="tf-cat-btn" data-cat="investing" id="catInvestingBtn">Investment I own</button>
+        </div>
+      </div>
+
       <div class="tf-actions">
         <button class="primary-btn" id="tfSubmit">Track this card</button>
         <button class="text-btn" id="tfCancel">Cancel</button>
       </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="watchingTabBtn" data-tab="watching">Watching</button>
+      <button class="tab-btn" id="investingTabBtn" data-tab="investing">Investing</button>
     </div>
 
     <div class="list-header">
@@ -485,7 +564,7 @@
   </div>
 
 <script>
-  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null };
+  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching' };
   const $ = (id) => document.getElementById(id);
 
   function money(amount, currency) {
@@ -558,7 +637,6 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       state.cards = data.cards || [];
-      $('emptyState').textContent = 'Nothing catalogued yet — search above to start watching a card.';
       render();
     } catch (err) {
       state.cards = [];
@@ -570,18 +648,33 @@
   }
 
   function render() {
-    const list = $('cardList');
     const empty = $('emptyState');
-    $('listCount').textContent = `${state.cards.length} tracked`;
+    const investing = state.cards.filter((c) => c.category === 'investing');
+    const watching = state.cards.filter((c) => c.category !== 'investing');
+    const shown = state.activeTab === 'investing' ? investing : watching;
 
-    if (!state.cards.length) {
-      list.innerHTML = '';
+    $('listCount').textContent = `${shown.length} ${state.activeTab === 'investing' ? 'investing' : 'tracked'}`;
+
+    if (!shown.length) {
+      $('cardList').innerHTML = '';
       empty.classList.remove('hidden');
+      empty.textContent = state.activeTab === 'investing'
+        ? 'Nothing marked as an investment yet \u2014 mark a card as "Investment I own" when adding or editing it.'
+        : 'Nothing catalogued yet \u2014 search above to start watching a card.';
       return;
     }
     empty.classList.add('hidden');
 
-    list.innerHTML = state.cards.map((c) => {
+    if (state.activeTab === 'investing') {
+      renderInvesting(shown);
+    } else {
+      renderWatching(shown);
+    }
+  }
+
+  function renderWatching(cards) {
+    const list = $('cardList');
+    list.innerHTML = cards.map((c) => {
       const metaBits = [];
       if (c.targetPrice != null) metaBits.push(`target ${c.currency === 'EUR' ? '\u20AC' : '$'}${c.targetPrice}`);
       if (c.dipPercent != null) metaBits.push(`${c.dipPercent}% dip`);
@@ -631,6 +724,86 @@
       });
     });
   }
+
+  function renderInvesting(cards) {
+    const list = $('cardList');
+    const cur = (c) => c.currency === 'EUR' ? '\u20AC' : '$';
+    const fmt = (n) => n != null ? Number(n).toFixed(2) : '\u2014';
+    const pctCell = (label, priceVal, pct) => {
+      const cls = pct == null ? '' : (pct >= 0 ? 'up' : 'down');
+      const sign = pct != null && pct > 0 ? '+' : '';
+      return `<div class="invest-cell"><span class="lbl">${label}</span><span class="val ${cls}">${priceVal != null ? fmt(priceVal) : '\u2014'}${pct != null ? ` (${sign}${pct}%)` : ''}</span></div>`;
+    };
+
+    list.innerHTML = cards.map((c) => {
+      const price7 = findHistoricalPrice(c.history, 7);
+      const price30 = findHistoricalPrice(c.history, 30);
+      const pct7 = (price7 != null && c.lastPrice != null) ? (((c.lastPrice - price7) / price7) * 100).toFixed(1) : null;
+      const pct30 = (price30 != null && c.lastPrice != null) ? (((c.lastPrice - price30) / price30) * 100).toFixed(1) : null;
+
+      const updateRow = c.manual ? `
+        <div class="invest-update">
+          <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="New price" class="invest-price-input" data-id="${c.id}">
+          <button class="invest-update-btn" data-id="${c.id}">Update</button>
+        </div>
+      ` : `<div class="invest-hint">Auto-tracked \u2014 price updates with Check now, same as your Watching cards.</div>`;
+
+      return `
+        <div class="invest-row ${c.alerting ? 'is-alerting' : ''}">
+          <div class="invest-head">
+            <div>
+              <div class="invest-name">${c.name}</div>
+              <div class="invest-set">${c.set || ''}</div>
+            </div>
+            <div class="invest-actions">
+              <button class="edit-btn" data-id="${c.id}">Edit</button>
+              <button class="remove-btn" data-id="${c.id}">Remove</button>
+            </div>
+          </div>
+          <div class="invest-grid">
+            <div class="invest-cell"><span class="lbl">Current</span><span class="val">${cur(c)}${fmt(c.lastPrice)}</span></div>
+            <div class="invest-cell"><span class="lbl">Target</span><span class="val">${c.targetPrice != null ? cur(c) + fmt(c.targetPrice) : '\u2014'}</span></div>
+            <div class="invest-cell"><span class="lbl">Dip alert</span><span class="val">${c.dipPercent != null ? c.dipPercent + '%' : '\u2014'}</span></div>
+            ${pctCell('7d ago', price7, pct7)}
+            ${pctCell('30d ago', price30, pct30)}
+          </div>
+          ${updateRow}
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.remove-btn').forEach((btn) => {
+      btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openThresholdForm(c, 'edit');
+      });
+    });
+    list.querySelectorAll('.invest-update-btn').forEach((btn) => {
+      btn.addEventListener('click', () => quickUpdatePrice(btn.dataset.id));
+    });
+  }
+
+  async function quickUpdatePrice(id) {
+    const input = document.querySelector(`.invest-price-input[data-id="${id}"]`);
+    const value = input ? input.value.trim() : '';
+    if (!value) { alert('Enter a price first.'); return; }
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, price: value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      await loadWatchlist();
+    } catch (err) {
+      alert('Could not update price: ' + err.message);
+    }
+  }
+
 
   let searchTimer = null;
   $('searchInput').addEventListener('input', () => {
@@ -715,6 +888,10 @@
     $('tfLow').checked = state.editing ? !!card.alertOnLow : true;
     $('tfSubmit').textContent = state.editing ? 'Save changes' : 'Track this card';
 
+    state.formCategory = (state.editing && card.category === 'investing') ? 'investing' : 'watching';
+    $('catWatchingBtn').classList.toggle('active', state.formCategory === 'watching');
+    $('catInvestingBtn').classList.toggle('active', state.formCategory === 'investing');
+
     $('thresholdForm').classList.remove('hidden');
     $('searchResults').innerHTML = '';
     $('searchInput').value = '';
@@ -764,6 +941,30 @@
 
   $('manualAddBtn').addEventListener('click', () => openThresholdForm(null, 'manual'));
 
+  $('catWatchingBtn').addEventListener('click', () => {
+    state.formCategory = 'watching';
+    $('catWatchingBtn').classList.add('active');
+    $('catInvestingBtn').classList.remove('active');
+  });
+  $('catInvestingBtn').addEventListener('click', () => {
+    state.formCategory = 'investing';
+    $('catInvestingBtn').classList.add('active');
+    $('catWatchingBtn').classList.remove('active');
+  });
+
+  $('watchingTabBtn').addEventListener('click', () => {
+    state.activeTab = 'watching';
+    $('watchingTabBtn').classList.add('active');
+    $('investingTabBtn').classList.remove('active');
+    render();
+  });
+  $('investingTabBtn').addEventListener('click', () => {
+    state.activeTab = 'investing';
+    $('investingTabBtn').classList.add('active');
+    $('watchingTabBtn').classList.remove('active');
+    render();
+  });
+
   $('tfCancel').addEventListener('click', () => {
     $('thresholdForm').classList.add('hidden');
     state.pendingCard = null;
@@ -793,7 +994,8 @@
       const payload = {
         targetPrice: $('tfTarget').value || null,
         dipPercent: $('tfDip').value || null,
-        alertOnLow: $('tfLow').checked
+        alertOnLow: $('tfLow').checked,
+        category: state.formCategory
       };
       if (isEdit) {
         payload.id = state.pendingCard.id;
@@ -857,11 +1059,11 @@
     return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
   }
 
-  function exportCsv() {
+  function exportCsv(cards) {
     const headers = ['Name', 'Set', 'Currency', 'Current Price', 'Target Price', 'Target Dip %', '7 Days Ago', '7 Day %', '30 Days Ago', '30 Day %'];
     const rows = [headers];
 
-    state.cards.forEach((c) => {
+    cards.forEach((c) => {
       const price7 = findHistoricalPrice(c.history, 7);
       const price30 = findHistoricalPrice(c.history, 30);
       const pct7 = (price7 != null && c.lastPrice != null) ? (((c.lastPrice - price7) / price7) * 100).toFixed(1) : '';
@@ -886,7 +1088,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `card-watchlist-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `card-${state.activeTab}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -894,8 +1096,9 @@
   }
 
   $('exportBtn').addEventListener('click', () => {
-    if (!state.cards.length) { alert('Nothing tracked yet to export.'); return; }
-    exportCsv();
+    const cards = state.cards.filter((c) => state.activeTab === 'investing' ? c.category === 'investing' : c.category !== 'investing');
+    if (!cards.length) { alert(`Nothing in ${state.activeTab} yet to export.`); return; }
+    exportCsv(cards);
   });
 
   async function removeCard(id) {
