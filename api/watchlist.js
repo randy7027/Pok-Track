@@ -35,11 +35,40 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image, category } = body;
+      const {
+        id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image, category,
+        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate
+      } = body;
       const today = new Date().toISOString().slice(0, 10);
       let record;
 
-      if (manual) {
+      if (category === 'grading') {
+        if (!name) {
+          res.status(400).json({ error: 'Missing card name' });
+          return;
+        }
+        if (!set) {
+          res.status(400).json({ error: 'Missing set' });
+          return;
+        }
+        const gradingId = 'grading:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        record = {
+          id: gradingId,
+          name: name,
+          set: set,
+          image: image || null,
+          category: 'grading',
+          currency: 'USD',
+          rawPrice: toNumberOrNull(rawPrice),
+          gradingService: gradingService || '',
+          gradingTier: gradingTier || '',
+          gradingFee: toNumberOrNull(gradingFee),
+          grade10Price: toNumberOrNull(grade10Price),
+          grade9Price: toNumberOrNull(grade9Price),
+          gemRate: toNumberOrNull(gemRate),
+          lastChecked: new Date().toISOString()
+        };
+      } else if (manual) {
         if (!name) {
           res.status(400).json({ error: 'Missing card name' });
           return;
@@ -117,7 +146,10 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PATCH') {
       const body = await parseJsonBody(req);
-      const { id, targetPrice, dipPercent, alertOnLow, price, set, image, category } = body;
+      const {
+        id, targetPrice, dipPercent, alertOnLow, price, set, image, category, name,
+        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate
+      } = body;
 
       if (!id) {
         res.status(400).json({ error: 'Missing card id' });
@@ -130,6 +162,24 @@ module.exports = async (req, res) => {
         return;
       }
       const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+      if (record.category === 'grading') {
+        if (name !== undefined) record.name = name;
+        if (set !== undefined) record.set = set;
+        if (image !== undefined) record.image = image || null;
+        if (rawPrice !== undefined) record.rawPrice = toNumberOrNull(rawPrice);
+        if (gradingService !== undefined) record.gradingService = gradingService;
+        if (gradingTier !== undefined) record.gradingTier = gradingTier;
+        if (gradingFee !== undefined) record.gradingFee = toNumberOrNull(gradingFee);
+        if (grade10Price !== undefined) record.grade10Price = toNumberOrNull(grade10Price);
+        if (grade9Price !== undefined) record.grade9Price = toNumberOrNull(grade9Price);
+        if (gemRate !== undefined) record.gemRate = toNumberOrNull(gemRate);
+        record.lastChecked = new Date().toISOString();
+
+        await redis.set(`card:${id}`, JSON.stringify(record));
+        res.status(200).json({ card: record });
+        return;
+      }
 
       // Only fields actually present in the request are touched -- this lets
       // a quick price-only update (from the investing table) leave every

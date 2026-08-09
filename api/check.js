@@ -11,6 +11,9 @@ async function checkOne(redis, id, today) {
   if (!raw) return { id, skipped: 'not found' };
   const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
+  if (record.category === 'grading') {
+    return { id, skipped: 'grading calculator entry -- not part of price checks' };
+  }
   if (record.manual) {
     return { id, skipped: 'manually tracked -- update its price by editing it' };
   }
