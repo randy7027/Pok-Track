@@ -28,6 +28,8 @@
     --brass: #C08B3E;
     --brass-bright: #DDAE63;
     --brass-dim: rgba(192, 139, 62, 0.16);
+    --profit-green: #6B9B6E;
+    --loss-red: #C0605A;
     --line: rgba(233, 228, 212, 0.10);
     --font-display: 'Fraunces', serif;
     --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
@@ -239,6 +241,7 @@
     margin-bottom: 0.35rem;
   }
   .tf-field .hint { color: var(--paper-muted); font-size: 0.74rem; margin-top: 0.3rem; }
+  .tf-field .hint + input { margin-top: 0.3rem; }
 
   .tf-checkbox {
     display: flex;
@@ -370,7 +373,7 @@
   .grade-service-line { font-family: var(--font-mono); font-size: 0.76rem; color: var(--paper-dim); margin: 0.5rem 0; }
   .grade-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.6rem 0.4rem;
     font-family: var(--font-mono);
     padding: 0.7rem 0;
@@ -381,9 +384,22 @@
   .grade-summary { font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8; }
   .grade-summary .lbl { color: var(--paper-muted); }
   .grade-summary .val { color: var(--paper); float: right; }
-  .grade-summary .val.up { color: var(--brass-bright); }
-  .grade-summary .val.down { color: var(--paper-dim); }
+  .grade-summary .val.up { color: var(--profit-green); }
+  .grade-summary .val.down { color: var(--loss-red); }
   .grade-line { display: flex; justify-content: space-between; }
+
+  .grade-verdict {
+    margin-top: 0.8rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .grade-verdict.grade-yes { background: rgba(107, 155, 110, 0.15); color: var(--profit-green); border: 1px solid var(--profit-green); }
+  .grade-verdict.grade-no { background: rgba(192, 96, 90, 0.15); color: var(--loss-red); border: 1px solid var(--loss-red); }
+  .grade-verdict.grade-maybe { background: var(--brass-dim); color: var(--brass-bright); border: 1px solid var(--brass); }
+  .grade-verdict.grade-unknown { background: transparent; color: var(--paper-muted); border: 1px dashed var(--line); font-weight: 400; }
 
   .list-header {
     display: flex;
@@ -545,6 +561,19 @@
         <input type="text" id="tfImageUrl" inputmode="url" placeholder="https://\u2026">
       </div>
 
+      <div class="tf-field hidden" id="tfProductTypeField">
+        <label for="tfProductType">Product type</label>
+        <select id="tfProductType">
+          <option value="card">Single card</option>
+          <option value="booster-pack">Booster pack</option>
+          <option value="booster-box">Booster box</option>
+          <option value="elite-trainer-box">Elite Trainer Box</option>
+          <option value="bundle">Booster bundle</option>
+          <option value="collection-box">Collection/special box</option>
+          <option value="other">Other sealed product</option>
+        </select>
+      </div>
+
       <div class="tf-field hidden" id="tfPriceField">
         <label for="tfPrice">Current price ($)</label>
         <input type="number" id="tfPrice" inputmode="decimal" placeholder="e.g. 45.00" min="0" step="0.01">
@@ -628,6 +657,22 @@
         <input type="number" id="gGemRate" inputmode="decimal" min="0" max="100" step="1" placeholder="e.g. 35">
         <div class="hint">Check the grading service's population report for this card if you have it \u2014 otherwise leave blank.</div>
       </div>
+      <div class="tf-field">
+        <label for="gPsa10Pop">PSA 10 population</label>
+        <input type="number" id="gPsa10Pop" inputmode="numeric" min="0" step="1" placeholder="e.g. 340">
+        <div class="hint">Raw count of copies graded a 10 \u2014 different from gem rate, which is a percentage.</div>
+      </div>
+      <div class="tf-field">
+        <label>Verdict thresholds</label>
+        <div class="hint">Grade it if expected ROI is at or above:</div>
+        <input type="number" id="gGradeRoiMin" inputmode="decimal" min="0" step="1" placeholder="ROI % \u2014 e.g. 100">
+        <div class="hint">\u2026and expected profit is at or above:</div>
+        <input type="number" id="gGradeProfitMin" inputmode="decimal" min="0" step="1" placeholder="Profit $ \u2014 e.g. 30">
+        <div class="hint">Skip it if ROI is below:</div>
+        <input type="number" id="gSkipRoiMax" inputmode="decimal" min="0" step="1" placeholder="ROI % \u2014 e.g. 30">
+        <div class="hint">\u2026or profit is below:</div>
+        <input type="number" id="gSkipProfitMax" inputmode="decimal" min="0" step="1" placeholder="Profit $ \u2014 e.g. 10">
+      </div>
       <div class="tf-actions">
         <button class="primary-btn" id="gSubmit">Add to calculator</button>
         <button class="text-btn" id="gCancel">Cancel</button>
@@ -688,6 +733,19 @@
   function money(amount, currency) {
     const symbol = currency === 'EUR' ? '\u20AC' : '$';
     return `<span class="cur">${symbol}</span>${Number(amount).toFixed(2)}`;
+  }
+
+  const PRODUCT_TYPE_LABELS = {
+    'booster-pack': 'Booster Pack',
+    'booster-box': 'Booster Box',
+    'elite-trainer-box': 'Elite Trainer Box',
+    'bundle': 'Booster Bundle',
+    'collection-box': 'Collection Box',
+    'other': 'Sealed Product'
+  };
+  function productTypeLabel(c) {
+    if (!c.productType || c.productType === 'card') return '';
+    return PRODUCT_TYPE_LABELS[c.productType] || '';
   }
 
   function timeAgo(iso) {
@@ -827,7 +885,7 @@
           ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
           <div class="card-main">
             <div class="card-name">${c.name}</div>
-            <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}</div>
+            <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}${productTypeLabel(c) ? ' \u00b7 ' + productTypeLabel(c) : ''}</div>
             <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'} ${changeHtml}</div>
             <div class="card-meta">${metaBits.join(' \u00b7 ')}</div>
             ${timeWindowGridHtml(c)}
@@ -871,7 +929,7 @@
             ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
             <div class="invest-head-text">
               <div class="invest-name">${c.name}</div>
-              <div class="invest-set">${c.set || ''}</div>
+              <div class="invest-set">${c.set || ''}${productTypeLabel(c) ? ' \u00b7 ' + productTypeLabel(c) : ''}</div>
             </div>
             <div class="invest-actions">
               <button class="edit-btn" data-id="${c.id}">Edit</button>
@@ -931,6 +989,26 @@
       const roiCls = (v) => v == null ? '' : (v >= 0 ? 'up' : 'down');
       const roiTxt = (v) => v == null ? '' : ` (${v >= 0 ? '+' : ''}${v.toFixed(0)}%)`;
 
+      let verdictText = 'Not enough data for a verdict yet';
+      let verdictCls = 'grade-unknown';
+      if (expectedROI != null && expectedProfit != null) {
+        const roiMin = c.gradeRoiMin != null ? c.gradeRoiMin : 100;
+        const profitMin = c.gradeProfitMin != null ? c.gradeProfitMin : 30;
+        const roiMax = c.skipRoiMax != null ? c.skipRoiMax : 30;
+        const profitMax = c.skipProfitMax != null ? c.skipProfitMax : 10;
+
+        if (expectedROI >= roiMin && expectedProfit >= profitMin) {
+          verdictText = '\u2713 Worth grading';
+          verdictCls = 'grade-yes';
+        } else if (expectedROI < roiMax || expectedProfit < profitMax) {
+          verdictText = '\u2717 Skip grading';
+          verdictCls = 'grade-no';
+        } else {
+          verdictText = '~ Marginal \u2014 your call';
+          verdictCls = 'grade-maybe';
+        }
+      }
+
       return `
         <div class="grade-row">
           <div class="grade-head">
@@ -949,6 +1027,7 @@
             <div class="invest-cell"><span class="lbl">Grade 10</span><span class="val">${money2(c.grade10Price)}</span></div>
             <div class="invest-cell"><span class="lbl">Grade 9</span><span class="val">${money2(c.grade9Price)}</span></div>
             <div class="invest-cell"><span class="lbl">Gem rate</span><span class="val">${c.gemRate != null ? c.gemRate + '%' : '\u2014'}</span></div>
+            <div class="invest-cell"><span class="lbl">PSA 10 pop</span><span class="val">${c.psa10Pop != null ? c.psa10Pop : '\u2014'}</span></div>
           </div>
           <div class="grade-summary">
             <div class="grade-line"><span class="lbl">Total invested</span><span class="val">${money2(totalInvestment)}</span></div>
@@ -956,6 +1035,7 @@
             <div class="grade-line"><span class="lbl">If it grades 9</span><span class="val ${roiCls(roi9)}">${pmoney(profit9)}${roiTxt(roi9)}</span></div>
             <div class="grade-line"><span class="lbl">Expected (w/ gem rate)</span><span class="val ${roiCls(expectedROI)}">${pmoney(expectedProfit)}${roiTxt(expectedROI)}</span></div>
           </div>
+          <div class="grade-verdict ${verdictCls}">${verdictText}</div>
         </div>
       `;
     }).join('');
@@ -1099,6 +1179,11 @@
     $('g10Price').value = (card && card.grade10Price != null) ? card.grade10Price : '';
     $('g9Price').value = (card && card.grade9Price != null) ? card.grade9Price : '';
     $('gGemRate').value = (card && card.gemRate != null) ? card.gemRate : '';
+    $('gPsa10Pop').value = (card && card.psa10Pop != null) ? card.psa10Pop : '';
+    $('gGradeRoiMin').value = card && card.gradeRoiMin != null ? card.gradeRoiMin : 100;
+    $('gGradeProfitMin').value = card && card.gradeProfitMin != null ? card.gradeProfitMin : 30;
+    $('gSkipRoiMax').value = card && card.skipRoiMax != null ? card.skipRoiMax : 30;
+    $('gSkipProfitMax').value = card && card.skipProfitMax != null ? card.skipProfitMax : 10;
 
     $('gSubmit').textContent = card ? 'Save changes' : 'Add to calculator';
     $('gradingForm').classList.remove('hidden');
@@ -1154,7 +1239,12 @@
         gradingFee: $('gFee').value || null,
         grade10Price: $('g10Price').value || null,
         grade9Price: $('g9Price').value || null,
-        gemRate: $('gGemRate').value || null
+        gemRate: $('gGemRate').value || null,
+        psa10Pop: $('gPsa10Pop').value || null,
+        gradeRoiMin: $('gGradeRoiMin').value || null,
+        gradeProfitMin: $('gGradeProfitMin').value || null,
+        skipRoiMax: $('gSkipRoiMax').value || null,
+        skipProfitMax: $('gSkipProfitMax').value || null
       };
       if (isEdit) payload.id = state.gradingEditId;
 
@@ -1198,6 +1288,9 @@
     $('tfImageField').classList.toggle('hidden', !state.manualMode);
     $('tfImageFile').value = '';
     $('tfImageUrl').value = '';
+
+    $('tfProductTypeField').classList.toggle('hidden', !state.manualMode);
+    $('tfProductType').value = card.productType || 'card';
 
     $('tfPriceField').classList.toggle('hidden', !state.manualMode);
     $('tfPrice').value = state.editing && card.lastPrice != null ? card.lastPrice : '';
@@ -1324,11 +1417,13 @@
           payload.price = $('tfPrice').value || null;
           payload.set = selectedSet;
           payload.image = state.manualImageData || $('tfImageUrl').value.trim() || state.pendingCard.image || null;
+          payload.productType = $('tfProductType').value;
         }
       } else if (isManual) {
         payload.manual = true;
         payload.name = name;
         payload.set = selectedSet;
+        payload.productType = $('tfProductType').value;
         payload.price = $('tfPrice').value || null;
         payload.image = state.manualImageData || $('tfImageUrl').value.trim() || null;
       } else {
