@@ -36,8 +36,9 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const {
-        id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image, category,
-        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate
+        id, targetPrice, dipPercent, alertOnLow, manual, name, set, price, image, category, productType,
+        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate, psa10Pop,
+        gradeRoiMin, gradeProfitMin, skipRoiMax, skipProfitMax
       } = body;
       const today = new Date().toISOString().slice(0, 10);
       let record;
@@ -66,6 +67,11 @@ module.exports = async (req, res) => {
           grade10Price: toNumberOrNull(grade10Price),
           grade9Price: toNumberOrNull(grade9Price),
           gemRate: toNumberOrNull(gemRate),
+          psa10Pop: toNumberOrNull(psa10Pop),
+          gradeRoiMin: gradeRoiMin !== '' && gradeRoiMin != null ? Number(gradeRoiMin) : 100,
+          gradeProfitMin: gradeProfitMin !== '' && gradeProfitMin != null ? Number(gradeProfitMin) : 30,
+          skipRoiMax: skipRoiMax !== '' && skipRoiMax != null ? Number(skipRoiMax) : 30,
+          skipProfitMax: skipProfitMax !== '' && skipProfitMax != null ? Number(skipProfitMax) : 10,
           lastChecked: new Date().toISOString()
         };
       } else if (manual) {
@@ -86,6 +92,7 @@ module.exports = async (req, res) => {
           number: '',
           image: image || null,
           manual: true,
+          productType: productType || 'card',
           category: category === 'investing' ? 'investing' : 'watching',
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
@@ -147,8 +154,9 @@ module.exports = async (req, res) => {
     if (req.method === 'PATCH') {
       const body = await parseJsonBody(req);
       const {
-        id, targetPrice, dipPercent, alertOnLow, price, set, image, category, name,
-        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate
+        id, targetPrice, dipPercent, alertOnLow, price, set, image, category, name, productType,
+        rawPrice, gradingService, gradingTier, gradingFee, grade10Price, grade9Price, gemRate, psa10Pop,
+        gradeRoiMin, gradeProfitMin, skipRoiMax, skipProfitMax
       } = body;
 
       if (!id) {
@@ -174,6 +182,11 @@ module.exports = async (req, res) => {
         if (grade10Price !== undefined) record.grade10Price = toNumberOrNull(grade10Price);
         if (grade9Price !== undefined) record.grade9Price = toNumberOrNull(grade9Price);
         if (gemRate !== undefined) record.gemRate = toNumberOrNull(gemRate);
+        if (psa10Pop !== undefined) record.psa10Pop = toNumberOrNull(psa10Pop);
+        if (gradeRoiMin !== undefined) record.gradeRoiMin = toNumberOrNull(gradeRoiMin);
+        if (gradeProfitMin !== undefined) record.gradeProfitMin = toNumberOrNull(gradeProfitMin);
+        if (skipRoiMax !== undefined) record.skipRoiMax = toNumberOrNull(skipRoiMax);
+        if (skipProfitMax !== undefined) record.skipProfitMax = toNumberOrNull(skipProfitMax);
         record.lastChecked = new Date().toISOString();
 
         await redis.set(`card:${id}`, JSON.stringify(record));
@@ -192,6 +205,7 @@ module.exports = async (req, res) => {
       if (record.manual) {
         if (set) record.set = set;
         if (image !== undefined) record.image = image || null;
+        if (productType !== undefined) record.productType = productType || 'card';
       }
 
       // Manual cards have no automatic price feed -- editing is also how
