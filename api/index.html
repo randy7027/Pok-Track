@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — Card Price Watch</title>
+<script>
+  // Visit the site with ?debug=1 to get an on-page console (errors, network
+  // requests) — useful on a phone where there's no plugged-in dev tools.
+  if (new URLSearchParams(location.search).get('debug') === '1') {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+    s.onload = function () { eruda.init(); };
+    document.head.appendChild(s);
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink-bg: #161A16;
+    --ink-surface: #1E2420;
+    --ink-raised: #242B25;
+    --paper: #E9E4D4;
+    --paper-dim: #B7B2A0;
+    --paper-muted: #767C70;
+    --brass: #C08B3E;
+    --brass-bright: #DDAE63;
+    --brass-dim: rgba(192, 139, 62, 0.16);
+    --profit-green: #6B9B6E;
+    --loss-red: #C0605A;
+    --line: rgba(233, 228, 212, 0.10);
+    --font-display: 'Fraunces', serif;
+    --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink-bg);
+    color: var(--paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 4rem;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 2.25rem 1.25rem 1rem;
+  }
+
+  header { margin-bottom: 1.75rem; }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brass);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: 2.1rem;
+    margin: 0.2rem 0 0.4rem;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--paper-dim);
+    font-size: 0.92rem;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  section.add-panel { position: relative; margin-bottom: 0.5rem; }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--brass) 50%), linear-gradient(135deg, var(--brass) 50%, transparent 50%);
+    background-position: calc(100% - 1.3rem) center, calc(100% - 1rem) center;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    margin-bottom: 0.6rem;
+  }
+  select:invalid, select.is-empty { color: var(--paper-muted); }
+
+  input::placeholder { color: var(--paper-muted); }
+  input:focus-visible, select:focus-visible { border-color: var(--brass); }
+
+  .search-results {
+    position: relative;
+    margin-top: 0.4rem;
+    border-radius: 10px;
+    overflow-y: auto;
+    max-height: 50vh;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+  }
+  .search-results:empty { display: none; border: none; }
+
+  .results-count {
+    position: sticky;
+    top: 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+    background: var(--ink-surface);
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .result-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row:hover, .result-row:focus-visible { background: var(--ink-raised); }
+  .result-row img { width: 32px; height: 44px; object-fit: cover; border-radius: 3px; background: var(--ink-raised); flex-shrink: 0; }
+  .result-info { flex: 1; min-width: 0; }
+  .result-name { font-size: 0.92rem; }
+  .result-set { font-size: 0.76rem; color: var(--paper-muted); }
+  .result-price { font-family: var(--font-mono); font-size: 0.85rem; color: var(--brass-bright); white-space: nowrap; }
+  .result-price .no-price { color: var(--paper-muted); font-family: var(--font-body); font-size: 0.7rem; font-style: italic; }
+
+  .threshold-form {
+    background: var(--ink-surface);
+    border: 1px solid var(--brass-dim);
+    border-radius: 12px;
+    padding: 1.1rem;
+    margin: 0.6rem 0 1.5rem;
+  }
+  .threshold-form.hidden { display: none; }
+  .hidden { display: none; }
+
+  .tf-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .tf-card img { width: 40px; height: 55px; object-fit: cover; border-radius: 4px; }
+  .tf-card-fields { flex: 1; min-width: 0; }
+  .tf-name-input {
+    display: block;
+    width: 100%;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--paper);
+    padding: 0.1rem 0;
+  }
+  .tf-set-input {
+    display: block;
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    color: var(--paper-muted);
+    background: transparent;
+    border: none;
+    padding: 0.1rem 0;
+    margin-top: 0.1rem;
+  }
+  .tf-name-input:not([readonly]), .tf-set-input:not([readonly]) { border-bottom: 1px dashed var(--line); }
+  .tf-name-input[readonly], .tf-set-input[readonly] { pointer-events: none; }
+  .tf-field.hidden, select.hidden { display: none; }
+
+  .tf-set-select {
+    display: block;
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--paper);
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    margin-top: 0.2rem;
+  }
+
+  #tfImageField input[type="file"] {
+    width: 100%;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+    color: var(--paper-dim);
+    font-size: 0.85rem;
+  }
+
+  .manual-add-link {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: none;
+    color: var(--paper-muted);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    text-decoration: underline;
+    padding: 0.6rem;
+    margin-top: 0.2rem;
+  }
+  .manual-add-link:hover { color: var(--brass-bright); }
+
+  .tf-field { margin-bottom: 0.85rem; }
+  .tf-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--paper-dim);
+    margin-bottom: 0.35rem;
+  }
+  .tf-field .hint { color: var(--paper-muted); font-size: 0.74rem; margin-top: 0.3rem; }
+  .tf-field .hint + input { margin-top: 0.3rem; }
+
+  .tf-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.88rem;
+    color: var(--paper-dim);
+  }
+  .tf-checkbox input { width: auto; accent-color: var(--brass); }
+
+  .tf-category { display: flex; gap: 0.5rem; }
+  .tf-cat-btn {
+    flex: 1;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    color: var(--paper-muted);
+    font-size: 0.78rem;
+    padding: 0.55rem 0.5rem;
+    min-height: auto;
+    border-radius: 8px;
+  }
+  .tf-cat-btn.active { border-color: var(--brass); color: var(--brass-bright); background: var(--brass-dim); }
+
+
+  .tf-actions { display: flex; gap: 0.6rem; margin-top: 1.1rem; }
+
+  button {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 8px;
+    padding: 0.8rem 1.1rem;
+    cursor: pointer;
+    min-height: 44px;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+  button:active { transform: scale(0.98); }
+  button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  .primary-btn { background: var(--brass); color: #14170F; font-weight: 600; flex: 1; }
+  .primary-btn:hover { background: var(--brass-bright); }
+  .text-btn { background: transparent; color: var(--paper-muted); }
+  .text-btn:hover { color: var(--paper); }
+
+  .ghost-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    font-size: 0.8rem;
+    padding: 0.5rem 0.85rem;
+    min-height: 36px;
+  }
+  .ghost-btn:hover { border-color: var(--brass); color: var(--brass-bright); }
+  .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .tabs {
+    display: flex;
+    margin-top: 1.8rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--paper-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.7rem 0.5rem;
+    border-radius: 0;
+    min-height: auto;
+  }
+  .tab-btn.active { color: var(--brass-bright); border-bottom-color: var(--brass); }
+
+  .invest-row {
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 0.7rem;
+  }
+  .invest-row.is-alerting { border-top-color: var(--brass); }
+  .invest-head { display: flex; align-items: flex-start; margin-bottom: 0.7rem; gap: 0.7rem; }
+  .invest-head-text { flex: 1; min-width: 0; }
+  .invest-name { font-family: var(--font-display); font-size: 1.05rem; }
+  .invest-set { font-size: 0.74rem; color: var(--paper-muted); margin-top: 0.1rem; }
+  .invest-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
+  .invest-actions button { padding: 0.3rem 0.5rem; font-size: 0.72rem; min-height: auto; background: transparent; color: var(--paper-muted); }
+  .invest-actions button:hover { color: var(--brass-bright); }
+  .invest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem 0.4rem; font-family: var(--font-mono); margin-top: 0.5rem; }
+  .invest-cell .lbl { display: block; font-size: 0.58rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--paper-muted); margin-bottom: 0.15rem; }
+  .invest-cell .val { font-size: 0.88rem; color: var(--paper); }
+  .invest-cell .val.up { color: var(--paper-dim); }
+  .invest-cell .val.down { color: var(--brass-bright); }
+  .invest-update {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--line);
+  }
+  .invest-update input { flex: 1; padding: 0.5rem 0.6rem; font-size: 0.85rem; }
+  .invest-update button { padding: 0.5rem 0.8rem; min-height: auto; font-size: 0.8rem; background: var(--brass); color: #14170F; font-weight: 600; }
+  .invest-hint { font-size: 0.7rem; color: var(--paper-muted); margin-top: 0.6rem; font-style: italic; }
+
+  .grading-form {
+    background: var(--ink-surface);
+    border: 1px solid var(--brass-dim);
+    border-radius: 12px;
+    padding: 1.1rem;
+    margin: 0.6rem 0 1.5rem;
+  }
+  .grading-form.hidden { display: none; }
+
+  .grade-row {
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--brass);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 0.7rem;
+  }
+  .grade-head { display: flex; align-items: flex-start; margin-bottom: 0.5rem; gap: 0.7rem; }
+  .grade-name { font-family: var(--font-display); font-size: 1.05rem; }
+  .grade-set { font-size: 0.74rem; color: var(--paper-muted); margin-top: 0.1rem; }
+  .grade-service-line { font-family: var(--font-mono); font-size: 0.76rem; color: var(--paper-dim); margin: 0.5rem 0; }
+  .grade-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem 0.4rem;
+    font-family: var(--font-mono);
+    padding: 0.7rem 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 0.7rem;
+  }
+  .grade-summary { font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8; }
+  .grade-summary .lbl { color: var(--paper-muted); }
+  .grade-summary .val { color: var(--paper); float: right; }
+  .grade-summary .val.up { color: var(--profit-green); }
+  .grade-summary .val.down { color: var(--loss-red); }
+  .grade-line { display: flex; justify-content: space-between; }
+
+  .grade-verdict {
+    margin-top: 0.8rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .grade-verdict.grade-yes { background: rgba(107, 155, 110, 0.15); color: var(--profit-green); border: 1px solid var(--profit-green); }
+  .grade-verdict.grade-no { background: rgba(192, 96, 90, 0.15); color: var(--loss-red); border: 1px solid var(--loss-red); }
+  .grade-verdict.grade-maybe { background: var(--brass-dim); color: var(--brass-bright); border: 1px solid var(--brass); }
+  .grade-verdict.grade-unknown { background: transparent; color: var(--paper-muted); border: 1px dashed var(--line); font-weight: 400; }
+
+  .list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1.8rem 0 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+  }
+  .header-btns { display: flex; gap: 0.5rem; }
+
+  .card-list { display: flex; flex-direction: column; gap: 0.7rem; }
+
+  .card-row {
+    position: relative;
+    display: flex;
+    gap: 0.9rem;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1rem 1rem 1rem;
+    overflow: hidden;
+  }
+  .card-row.is-alerting { border-top-color: var(--brass); }
+
+  .card-row img.thumb {
+    width: 48px;
+    height: 66px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: var(--ink-raised);
+  }
+
+  .card-main { flex: 1; min-width: 0; }
+  .card-name { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; padding-right: 3.5rem; }
+  .card-set { font-size: 0.76rem; color: var(--paper-muted); margin-top: 0.15rem; }
+  .card-price { font-family: var(--font-mono); font-size: 1.35rem; margin-top: 0.5rem; color: var(--paper); }
+  .card-price .cur { font-size: 0.9rem; color: var(--paper-muted); }
+
+  .price-change {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--paper-muted);
+    vertical-align: middle;
+  }
+  .price-change.down { color: var(--brass-bright); }
+  .price-change.up { color: var(--paper-dim); }
+
+  .card-meta {
+    font-size: 0.76rem;
+    color: var(--paper-muted);
+    margin-top: 0.35rem;
+    line-height: 1.5;
+  }
+  .card-reasons { color: var(--brass-bright); font-size: 0.78rem; margin-top: 0.35rem; }
+
+  .stamp {
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--paper-muted);
+    color: var(--paper-muted);
+    border-radius: 4px;
+    padding: 0.2rem 0.4rem;
+    transform: rotate(3deg);
+  }
+  .stamp.hit {
+    border-color: var(--brass);
+    color: var(--brass-bright);
+    background: var(--brass-dim);
+  }
+
+  .row-actions {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.7rem;
+    display: flex;
+    gap: 0.4rem;
+  }
+  .edit-btn, .remove-btn {
+    background: transparent;
+    color: var(--paper-muted);
+    font-size: 0.72rem;
+    padding: 0.3rem 0.5rem;
+    min-height: auto;
+  }
+  .edit-btn:hover, .remove-btn:hover { color: var(--brass-bright); }
+
+  .empty-state {
+    text-align: center;
+    color: var(--paper-muted);
+    font-size: 0.9rem;
+    padding: 2.5rem 1rem;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+  }
+  .empty-state.hidden { display: none; }
+
+  footer {
+    margin-top: 2.5rem;
+    text-align: center;
+    font-size: 0.74rem;
+    color: var(--paper-muted);
+    line-height: 1.6;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card-row { animation: fadeIn 0.25s ease; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">Specimen Ledger</div>
+      <h1>Card Price Watch</h1>
+      <p class="sub">Add a card, set a price you'd buy at, and let it watch TCGPlayer for you.</p>
+    </header>
+
+    <section class="add-panel">
+      <select id="setSelect" class="is-empty">
+        <option value="">All sets</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="Search a card by name — e.g. Charizard" autocomplete="off">
+      <div class="search-results" id="searchResults"></div>
+      <button type="button" class="manual-add-link" id="manualAddBtn">Can't find it? Add it manually</button>
+    </section>
+
+    <div class="threshold-form hidden" id="thresholdForm">
+      <div class="tf-card">
+        <img id="tfImg" alt="">
+        <div class="tf-card-fields">
+          <input type="text" id="tfName" class="tf-name-input" placeholder="Card name">
+          <input type="text" id="tfSet" class="tf-set-input" readonly>
+          <select id="tfSetSelect" class="hidden"></select>
+        </div>
+      </div>
+
+      <div class="tf-field hidden" id="tfImageField">
+        <label for="tfImageFile">Card image (optional)</label>
+        <input type="file" id="tfImageFile" accept="image/*">
+        <div class="hint">Or paste an image URL instead:</div>
+        <input type="text" id="tfImageUrl" inputmode="url" placeholder="https://\u2026">
+      </div>
+
+      <div class="tf-field hidden" id="tfProductTypeField">
+        <label for="tfProductType">Product type</label>
+        <select id="tfProductType">
+          <option value="card">Single card</option>
+          <option value="booster-pack">Booster pack</option>
+          <option value="booster-box">Booster box</option>
+          <option value="elite-trainer-box">Elite Trainer Box</option>
+          <option value="bundle">Booster bundle</option>
+          <option value="collection-box">Collection/special box</option>
+          <option value="other">Other sealed product</option>
+        </select>
+      </div>
+
+      <div class="tf-field hidden" id="tfPriceField">
+        <label for="tfPrice">Current price ($)</label>
+        <input type="number" id="tfPrice" inputmode="decimal" placeholder="e.g. 45.00" min="0" step="0.01">
+      </div>
+
+      <div class="tf-field">
+        <label for="tfTarget">Alert at or below this price</label>
+        <input type="number" id="tfTarget" inputmode="decimal" placeholder="e.g. 250" min="0" step="0.01">
+      </div>
+
+      <div class="tf-field">
+        <label for="tfDip">Alert on a percentage dip</label>
+        <input type="number" id="tfDip" inputmode="numeric" placeholder="e.g. 15 (for 15%)" min="0" max="99" step="1">
+        <div class="hint">Compared against the trailing 7-day average once there's enough history.</div>
+      </div>
+
+      <div class="tf-field">
+        <label class="tf-checkbox">
+          <input type="checkbox" id="tfLow">
+          Alert on a new low since you started tracking it
+        </label>
+      </div>
+
+      <div class="tf-field">
+        <label>Category</label>
+        <div class="tf-category">
+          <button type="button" class="tf-cat-btn active" data-cat="watching" id="catWatchingBtn">Watching to buy</button>
+          <button type="button" class="tf-cat-btn" data-cat="investing" id="catInvestingBtn">Investment I own</button>
+        </div>
+      </div>
+
+      <div class="tf-actions">
+        <button class="primary-btn" id="tfSubmit">Track this card</button>
+        <button class="text-btn" id="tfCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="grading-form hidden" id="gradingForm">
+      <div class="tf-card">
+        <img id="gImg" alt="">
+        <div class="tf-card-fields">
+          <input type="text" id="gName" class="tf-name-input" placeholder="Card name">
+          <select id="gSet" class="tf-set-select"></select>
+        </div>
+      </div>
+
+      <div class="tf-field">
+        <label for="gImageFile">Card image (optional)</label>
+        <input type="file" id="gImageFile" accept="image/*">
+        <div class="hint">Or paste an image URL instead:</div>
+        <input type="text" id="gImageUrl" inputmode="url" placeholder="https://\u2026">
+      </div>
+
+      <div class="tf-field">
+        <label for="gRawPrice">Raw (ungraded) price ($)</label>
+        <input type="number" id="gRawPrice" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 40.00">
+      </div>
+      <div class="tf-field">
+        <label for="gService">Grading service</label>
+        <select id="gService"></select>
+      </div>
+      <div class="tf-field">
+        <label for="gTier">Service tier</label>
+        <select id="gTier"></select>
+      </div>
+      <div class="tf-field">
+        <label for="gFee">Grading fee ($)</label>
+        <input type="number" id="gFee" inputmode="decimal" min="0" step="0.01">
+        <div class="hint">Auto-fills from the tier above — reference pricing, edit if it's changed.</div>
+      </div>
+      <div class="tf-field">
+        <label for="g10Price">Grade 10 (Gem Mint) price ($)</label>
+        <input type="number" id="g10Price" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 250.00">
+      </div>
+      <div class="tf-field">
+        <label for="g9Price">Grade 9 price ($)</label>
+        <input type="number" id="g9Price" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 90.00">
+      </div>
+      <div class="tf-field">
+        <label for="gGemRate">Gem rate (% that grade 10)</label>
+        <input type="number" id="gGemRate" inputmode="decimal" min="0" max="100" step="1" placeholder="e.g. 35">
+        <div class="hint">Check the grading service's population report for this card if you have it \u2014 otherwise leave blank.</div>
+      </div>
+      <div class="tf-field">
+        <label for="gPsa10Pop">PSA 10 population</label>
+        <input type="number" id="gPsa10Pop" inputmode="numeric" min="0" step="1" placeholder="e.g. 340">
+        <div class="hint">Raw count of copies graded a 10 \u2014 different from gem rate, which is a percentage.</div>
+      </div>
+      <div class="tf-field">
+        <label>Verdict thresholds</label>
+        <div class="hint">Grade it if expected ROI is at or above:</div>
+        <input type="number" id="gGradeRoiMin" inputmode="decimal" min="0" step="1" placeholder="ROI % \u2014 e.g. 100">
+        <div class="hint">\u2026and expected profit is at or above:</div>
+        <input type="number" id="gGradeProfitMin" inputmode="decimal" min="0" step="1" placeholder="Profit $ \u2014 e.g. 30">
+        <div class="hint">Skip it if ROI is below:</div>
+        <input type="number" id="gSkipRoiMax" inputmode="decimal" min="0" step="1" placeholder="ROI % \u2014 e.g. 30">
+        <div class="hint">\u2026or profit is below:</div>
+        <input type="number" id="gSkipProfitMax" inputmode="decimal" min="0" step="1" placeholder="Profit $ \u2014 e.g. 10">
+      </div>
+      <div class="tf-actions">
+        <button class="primary-btn" id="gSubmit">Add to calculator</button>
+        <button class="text-btn" id="gCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="watchingTabBtn" data-tab="watching">Watching</button>
+      <button class="tab-btn" id="investingTabBtn" data-tab="investing">Investing</button>
+      <button class="tab-btn" id="gradingTabBtn" data-tab="grading">Grading</button>
+    </div>
+
+    <div class="list-header">
+      <span id="listCount">0 tracked</span>
+      <div class="header-btns">
+        <button class="ghost-btn hidden" id="addGradingBtn">+ Add card</button>
+        <button class="ghost-btn" id="exportBtn">Export CSV</button>
+        <button class="ghost-btn" id="checkNowBtn">Check now</button>
+      </div>
+    </div>
+
+    <div class="card-list" id="cardList"></div>
+    <div class="empty-state" id="emptyState">Nothing catalogued yet — search above to start watching a card.</div>
+
+    <footer>
+      Checks run automatically once a day. Prices sourced from TCGPlayer and CardMarket via TCGdex.
+    </footer>
+  </div>
+
+<script>
+  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching', gradingEditId: null, gradingImageData: null, gradingCurrentImage: null };
+
+  // Reference fees only -- grading company pricing changes often (several
+  // tiers moved in early-to-mid 2026), so these pre-fill the fee field but
+  // it always stays editable. Verify current pricing at the grader's site
+  // before submitting anything for real.
+  const GRADING_FEES = {
+    PSA: {
+      'Regular (~30-40 business days)': 79.99,
+      'Express (~10-15 business days)': 149,
+      'Super Express (~5 business days)': 325,
+      'Walk-Through (1-2 days)': 599
+    },
+    CGC: {
+      'Economy (~80 business days)': 18,
+      'Standard (~50 business days)': 55,
+      'Express (~15 business days)': 100,
+      'Walk-Through (same day)': 300
+    },
+    BGS: {
+      'Economy': 25,
+      'Standard': 35
+    }
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function money(amount, currency) {
+    const symbol = currency === 'EUR' ? '\u20AC' : '$';
+    return `<span class="cur">${symbol}</span>${Number(amount).toFixed(2)}`;
+  }
+
+  const PRODUCT_TYPE_LABELS = {
+    'booster-pack': 'Booster Pack',
+    'booster-box': 'Booster Box',
+    'elite-trainer-box': 'Elite Trainer Box',
+    'bundle': 'Booster Bundle',
+    'collection-box': 'Collection Box',
+    'other': 'Sealed Product'
+  };
+  function productTypeLabel(c) {
+    if (!c.productType || c.productType === 'card') return '';
+    return PRODUCT_TYPE_LABELS[c.productType] || '';
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  }
+
+  function buildSetOptionsHtml(sets, valueField, placeholder) {
+    const seriesOrder = [];
+    const bySeries = {};
+    sets.forEach((s) => {
+      const series = s.series || 'Other';
+      if (!bySeries[series]) { bySeries[series] = []; seriesOrder.push(series); }
+      bySeries[series].push(s);
+    });
+    let html = `<option value="">${placeholder}</option>`;
+    seriesOrder.forEach((series) => {
+      html += `<optgroup label="${series}">`;
+      bySeries[series].forEach((s) => {
+        html += `<option value="${s[valueField]}">${s.name}</option>`;
+      });
+      html += '</optgroup>';
+    });
+    return html;
+  }
+
+  async function loadSets(attempt) {
+    attempt = attempt || 1;
+    const select = $('setSelect');
+    if (attempt === 1) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">Loading sets\u2026</option>';
+    }
+
+    try {
+      const res = await fetch('/api/sets');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      const sets = data.sets || [];
+      if (!sets.length) throw new Error('empty');
+
+      state.sets = sets;
+      select.innerHTML = buildSetOptionsHtml(sets, 'id', 'All sets');
+      select.disabled = false;
+      $('tfSetSelect').innerHTML = buildSetOptionsHtml(sets, 'name', 'Choose a set\u2026');
+      $('gSet').innerHTML = buildSetOptionsHtml(sets, 'name', 'Choose a set\u2026');
+    } catch (err) {
+      if (attempt < 3) {
+        setTimeout(() => loadSets(attempt + 1), 800 * attempt);
+        return;
+      }
+      select.innerHTML = '<option value="">All sets (list unavailable right now \u2014 name search still works)</option>';
+      select.disabled = false;
+      $('tfSetSelect').innerHTML = '<option value="">Set list unavailable \u2014 try again shortly</option>';
+      $('gSet').innerHTML = '<option value="">Set list unavailable \u2014 try again shortly</option>';
+    }
+  }
+
+  async function loadWatchlist() {
+    try {
+      const res = await fetch('/api/watchlist');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      state.cards = data.cards || [];
+      render();
+    } catch (err) {
+      state.cards = [];
+      $('cardList').innerHTML = '';
+      $('listCount').textContent = '0 tracked';
+      $('emptyState').textContent = 'Could not load your watchlist — ' + err.message;
+      $('emptyState').classList.remove('hidden');
+    }
+  }
+
+  function render() {
+    const empty = $('emptyState');
+    const investing = state.cards.filter((c) => c.category === 'investing');
+    const grading = state.cards.filter((c) => c.category === 'grading');
+    const watching = state.cards.filter((c) => c.category !== 'investing' && c.category !== 'grading');
+    const shown = state.activeTab === 'investing' ? investing : state.activeTab === 'grading' ? grading : watching;
+
+    const countLabel = state.activeTab === 'investing' ? 'investing' : state.activeTab === 'grading' ? 'in calculator' : 'tracked';
+    $('listCount').textContent = `${shown.length} ${countLabel}`;
+
+    if (!shown.length) {
+      $('cardList').innerHTML = '';
+      empty.classList.remove('hidden');
+      empty.textContent = state.activeTab === 'investing'
+        ? 'Nothing marked as an investment yet \u2014 mark a card as "Investment I own" when adding or editing it.'
+        : state.activeTab === 'grading'
+        ? 'Nothing in the grading calculator yet \u2014 tap "+ Add card" above to run the numbers on one.'
+        : 'Nothing catalogued yet \u2014 search above to start watching a card.';
+      return;
+    }
+    empty.classList.add('hidden');
+
+    if (state.activeTab === 'investing') {
+      renderInvesting(shown);
+    } else if (state.activeTab === 'grading') {
+      renderGrading(shown);
+    } else {
+      renderWatching(shown);
+    }
+  }
+
+  function renderWatching(cards) {
+    const list = $('cardList');
+    list.innerHTML = cards.map((c) => {
+      const metaBits = [];
+      if (c.targetPrice != null) metaBits.push(`target ${c.currency === 'EUR' ? '\u20AC' : '$'}${c.targetPrice}`);
+      if (c.dipPercent != null) metaBits.push(`${c.dipPercent}% dip`);
+      if (c.alertOnLow) metaBits.push('watching for new low');
+      if (c.lowestSeen != null) metaBits.push(`lowest seen ${c.currency === 'EUR' ? '\u20AC' : '$'}${Number(c.lowestSeen).toFixed(2)}`);
+      metaBits.push(c.manual ? 'manually tracked \u2014 edit to update price' : `checked ${timeAgo(c.lastChecked)}`);
+
+      const stampText = c.alerting ? 'Buy signal' : 'Watching';
+      const reasons = c.alertReasons && c.alertReasons.length
+        ? `<div class="card-reasons">${c.alertReasons.join(' \u00b7 ')}</div>` : '';
+
+      let changeHtml = '';
+      if (typeof c.lastChangePercent === 'number') {
+        const up = c.lastChangePercent > 0;
+        const flat = Math.abs(c.lastChangePercent) < 0.05;
+        const arrow = flat ? '' : (up ? '\u25b2' : '\u25bc');
+        const cls = flat ? '' : (up ? 'up' : 'down');
+        changeHtml = `<span class="price-change ${cls}">${arrow} ${Math.abs(c.lastChangePercent).toFixed(1)}%</span>`;
+      }
+
+      return `
+        <div class="card-row ${c.alerting ? 'is-alerting' : ''}">
+          <div class="stamp ${c.alerting ? 'hit' : ''}">${stampText}</div>
+          ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
+          <div class="card-main">
+            <div class="card-name">${c.name}</div>
+            <div class="card-set">${c.set || ''}${c.number ? ' \u00b7 #' + c.number : ''}${productTypeLabel(c) ? ' \u00b7 ' + productTypeLabel(c) : ''}</div>
+            <div class="card-price">${c.lastPrice != null ? money(c.lastPrice, c.currency) : '\u2014'} ${changeHtml}</div>
+            <div class="card-meta">${metaBits.join(' \u00b7 ')}</div>
+            ${timeWindowGridHtml(c)}
+            ${reasons}
+          </div>
+          <div class="row-actions">
+            <button class="edit-btn" data-id="${c.id}">Edit</button>
+            <button class="remove-btn" data-id="${c.id}">Remove</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.remove-btn').forEach((btn) => {
+      btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openThresholdForm(c, 'edit');
+      });
+    });
+  }
+
+  function renderInvesting(cards) {
+    const list = $('cardList');
+    const cur = (c) => c.currency === 'EUR' ? '\u20AC' : '$';
+    const fmt = (n) => n != null ? Number(n).toFixed(2) : '\u2014';
+
+    list.innerHTML = cards.map((c) => {
+      const updateRow = c.manual ? `
+        <div class="invest-update">
+          <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="New price" class="invest-price-input" data-id="${c.id}">
+          <button class="invest-update-btn" data-id="${c.id}">Update</button>
+        </div>
+      ` : `<div class="invest-hint">Auto-tracked \u2014 price updates with Check now, same as your Watching cards.</div>`;
+
+      return `
+        <div class="invest-row ${c.alerting ? 'is-alerting' : ''}">
+          <div class="invest-head">
+            ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
+            <div class="invest-head-text">
+              <div class="invest-name">${c.name}</div>
+              <div class="invest-set">${c.set || ''}${productTypeLabel(c) ? ' \u00b7 ' + productTypeLabel(c) : ''}</div>
+            </div>
+            <div class="invest-actions">
+              <button class="edit-btn" data-id="${c.id}">Edit</button>
+              <button class="remove-btn" data-id="${c.id}">Remove</button>
+            </div>
+          </div>
+          <div class="invest-grid">
+            <div class="invest-cell"><span class="lbl">Current</span><span class="val">${cur(c)}${fmt(c.lastPrice)}</span></div>
+            <div class="invest-cell"><span class="lbl">Target</span><span class="val">${c.targetPrice != null ? cur(c) + fmt(c.targetPrice) : '\u2014'}</span></div>
+            <div class="invest-cell"><span class="lbl">Dip alert</span><span class="val">${c.dipPercent != null ? c.dipPercent + '%' : '\u2014'}</span></div>
+          </div>
+          ${timeWindowGridHtml(c)}
+          ${updateRow}
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.remove-btn').forEach((btn) => {
+      btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openThresholdForm(c, 'edit');
+      });
+    });
+    list.querySelectorAll('.invest-update-btn').forEach((btn) => {
+      btn.addEventListener('click', () => quickUpdatePrice(btn.dataset.id));
+    });
+  }
+
+  function renderGrading(cards) {
+    const list = $('cardList');
+    const money2 = (n) => n != null ? `$${Number(n).toFixed(2)}` : '\u2014';
+    const pmoney = (n) => n == null ? '\u2014' : `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
+
+    list.innerHTML = cards.map((c) => {
+      const totalInvestment = (c.rawPrice != null && c.gradingFee != null) ? c.rawPrice + c.gradingFee : null;
+
+      let profit10 = null, roi10 = null;
+      if (totalInvestment != null && c.grade10Price != null) {
+        profit10 = c.grade10Price - totalInvestment;
+        roi10 = (profit10 / totalInvestment) * 100;
+      }
+      let profit9 = null, roi9 = null;
+      if (totalInvestment != null && c.grade9Price != null) {
+        profit9 = c.grade9Price - totalInvestment;
+        roi9 = (profit9 / totalInvestment) * 100;
+      }
+      let expectedProfit = null, expectedROI = null;
+      if (totalInvestment != null && c.grade10Price != null && c.grade9Price != null && c.gemRate != null) {
+        const expectedValue = (c.gemRate / 100) * c.grade10Price + ((100 - c.gemRate) / 100) * c.grade9Price;
+        expectedProfit = expectedValue - totalInvestment;
+        expectedROI = (expectedProfit / totalInvestment) * 100;
+      }
+
+      const roiCls = (v) => v == null ? '' : (v >= 0 ? 'up' : 'down');
+      const roiTxt = (v) => v == null ? '' : ` (${v >= 0 ? '+' : ''}${v.toFixed(0)}%)`;
+
+      let verdictText = 'Not enough data for a verdict yet';
+      let verdictCls = 'grade-unknown';
+      if (expectedROI != null && expectedProfit != null) {
+        const roiMin = c.gradeRoiMin != null ? c.gradeRoiMin : 100;
+        const profitMin = c.gradeProfitMin != null ? c.gradeProfitMin : 30;
+        const roiMax = c.skipRoiMax != null ? c.skipRoiMax : 30;
+        const profitMax = c.skipProfitMax != null ? c.skipProfitMax : 10;
+
+        if (expectedROI >= roiMin && expectedProfit >= profitMin) {
+          verdictText = '\u2713 Worth grading';
+          verdictCls = 'grade-yes';
+        } else if (expectedROI < roiMax || expectedProfit < profitMax) {
+          verdictText = '\u2717 Skip grading';
+          verdictCls = 'grade-no';
+        } else {
+          verdictText = '~ Marginal \u2014 your call';
+          verdictCls = 'grade-maybe';
+        }
+      }
+
+      return `
+        <div class="grade-row">
+          <div class="grade-head">
+            ${c.image ? `<img class="thumb" src="${c.image}" alt="">` : '<div class="thumb"></div>'}
+            <div class="invest-head-text">
+              <div class="grade-name">${c.name}</div>
+              <div class="grade-set">${c.set || ''}</div>
+            </div>
+            <div class="invest-actions">
+              <button class="edit-btn" data-id="${c.id}">Edit</button>
+              <button class="remove-btn" data-id="${c.id}">Remove</button>
+            </div>
+          </div>
+          <div class="grade-service-line">${c.gradingService || '\u2014'} ${c.gradingTier || ''} \u00b7 fee ${money2(c.gradingFee)} \u00b7 raw ${money2(c.rawPrice)}</div>
+          <div class="grade-grid">
+            <div class="invest-cell"><span class="lbl">Grade 10</span><span class="val">${money2(c.grade10Price)}</span></div>
+            <div class="invest-cell"><span class="lbl">Grade 9</span><span class="val">${money2(c.grade9Price)}</span></div>
+            <div class="invest-cell"><span class="lbl">Gem rate</span><span class="val">${c.gemRate != null ? c.gemRate + '%' : '\u2014'}</span></div>
+            <div class="invest-cell"><span class="lbl">PSA 10 pop</span><span class="val">${c.psa10Pop != null ? c.psa10Pop : '\u2014'}</span></div>
+          </div>
+          <div class="grade-summary">
+            <div class="grade-line"><span class="lbl">Total invested</span><span class="val">${money2(totalInvestment)}</span></div>
+            <div class="grade-line"><span class="lbl">If it grades 10</span><span class="val ${roiCls(roi10)}">${pmoney(profit10)}${roiTxt(roi10)}</span></div>
+            <div class="grade-line"><span class="lbl">If it grades 9</span><span class="val ${roiCls(roi9)}">${pmoney(profit9)}${roiTxt(roi9)}</span></div>
+            <div class="grade-line"><span class="lbl">Expected (w/ gem rate)</span><span class="val ${roiCls(expectedROI)}">${pmoney(expectedProfit)}${roiTxt(expectedROI)}</span></div>
+          </div>
+          <div class="grade-verdict ${verdictCls}">${verdictText}</div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.remove-btn').forEach((btn) => {
+      btn.addEventListener('click', () => removeCard(btn.dataset.id));
+    });
+    list.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = state.cards.find((card) => card.id === btn.dataset.id);
+        if (c) openGradingForm(c);
+      });
+    });
+  }
+
+  async function quickUpdatePrice(id) {
+    const input = document.querySelector(`.invest-price-input[data-id="${id}"]`);
+    const value = input ? input.value.trim() : '';
+    if (!value) { alert('Enter a price first.'); return; }
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, price: value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      await loadWatchlist();
+    } catch (err) {
+      alert('Could not update price: ' + err.message);
+    }
+  }
+
+
+  let searchTimer = null;
+  $('searchInput').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(doSearch, 350);
+  });
+  $('setSelect').addEventListener('change', (e) => {
+    e.target.classList.toggle('is-empty', !e.target.value);
+    doSearch();
+  });
+
+  async function doSearch(attempt) {
+    attempt = attempt || 1;
+    const q = $('searchInput').value.trim();
+    const setId = $('setSelect').value;
+    if (q.length < 2 && !setId) { $('searchResults').innerHTML = ''; return; }
+
+    if (attempt === 1) {
+      $('searchResults').innerHTML = '<div class="results-count">Searching\u2026</div>';
+    }
+
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (setId) params.set('set', setId);
+      const res = await fetch('/api/search?' + params.toString());
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      const results = data.results || [];
+      const countHtml = results.length
+        ? `<div class="results-count">${results.length} card${results.length === 1 ? '' : 's'}</div>` : '';
+      $('searchResults').innerHTML = countHtml + results.map((r) => `
+        <div class="result-row" data-id="${r.id}" tabindex="0">
+          ${r.image ? `<img src="${r.image}" alt="">` : ''}
+          <div class="result-info">
+            <div class="result-name">${r.name}</div>
+            <div class="result-set">${r.set || ''}${r.number ? ' \u00b7 #' + r.number : ''}</div>
+          </div>
+          <div class="result-price">${r.price ? money(r.price.price, r.price.currency) : '<span class="no-price">no price data</span>'}</div>
+        </div>
+      `).join('');
+
+      $('searchResults').querySelectorAll('.result-row').forEach((row) => {
+        const match = results.find((r) => r.id === row.dataset.id);
+        row.addEventListener('click', () => {
+          if (state.activeTab === 'grading') {
+            openGradingForm(null, match);
+          } else {
+            openThresholdForm(match);
+          }
+        });
+      });
+    } catch (err) {
+      if (attempt < 2) {
+        setTimeout(() => doSearch(attempt + 1), 900);
+        return;
+      }
+      $('searchResults').innerHTML = `<div class="result-row">Search failed \u2014 ${err.message}</div>`;
+    }
+  }
+
+  function populateGradingServiceDropdowns() {
+    const serviceSelect = $('gService');
+    serviceSelect.innerHTML = Object.keys(GRADING_FEES).map((s) => `<option value="${s}">${s}</option>`).join('');
+    populateGradingTierDropdown();
+  }
+
+  function populateGradingTierDropdown() {
+    const service = $('gService').value;
+    const tiers = GRADING_FEES[service] || {};
+    $('gTier').innerHTML = Object.keys(tiers).map((t) => `<option value="${t}">${t}</option>`).join('');
+    applyGradingFeeFromTier();
+  }
+
+  function applyGradingFeeFromTier() {
+    const service = $('gService').value;
+    const tier = $('gTier').value;
+    const fee = (GRADING_FEES[service] || {})[tier];
+    if (fee != null) $('gFee').value = fee;
+  }
+
+  $('gService').addEventListener('change', populateGradingTierDropdown);
+  $('gTier').addEventListener('change', applyGradingFeeFromTier);
+
+  function openGradingForm(card, prefill) {
+    state.gradingEditId = card ? card.id : null;
+    state.gradingImageData = null;
+    const nameSource = card || prefill || {};
+    state.gradingCurrentImage = nameSource.image || null;
+
+    $('gName').value = nameSource.name || '';
+    $('gSet').value = nameSource.set || '';
+    $('gImg').src = nameSource.image || '';
+    $('gImg').style.visibility = nameSource.image ? 'visible' : 'hidden';
+    $('gImageFile').value = '';
+    $('gImageUrl').value = '';
+    $('gRawPrice').value = (card && card.rawPrice != null) ? card.rawPrice : '';
+
+    if (card && card.gradingService && GRADING_FEES[card.gradingService]) {
+      $('gService').value = card.gradingService;
+      populateGradingTierDropdown();
+      if (card.gradingTier) $('gTier').value = card.gradingTier;
+    } else {
+      $('gService').selectedIndex = 0;
+      populateGradingTierDropdown();
+    }
+    $('gFee').value = (card && card.gradingFee != null) ? card.gradingFee : $('gFee').value;
+    $('g10Price').value = (card && card.grade10Price != null) ? card.grade10Price : '';
+    $('g9Price').value = (card && card.grade9Price != null) ? card.grade9Price : '';
+    $('gGemRate').value = (card && card.gemRate != null) ? card.gemRate : '';
+    $('gPsa10Pop').value = (card && card.psa10Pop != null) ? card.psa10Pop : '';
+    $('gGradeRoiMin').value = card && card.gradeRoiMin != null ? card.gradeRoiMin : 100;
+    $('gGradeProfitMin').value = card && card.gradeProfitMin != null ? card.gradeProfitMin : 30;
+    $('gSkipRoiMax').value = card && card.skipRoiMax != null ? card.skipRoiMax : 30;
+    $('gSkipProfitMax').value = card && card.skipProfitMax != null ? card.skipProfitMax : 10;
+
+    $('gSubmit').textContent = card ? 'Save changes' : 'Add to calculator';
+    $('gradingForm').classList.remove('hidden');
+    $('gradingForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('addGradingBtn').addEventListener('click', () => openGradingForm(null));
+
+  $('gImageFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    resizeImageFile(file, (dataUrl) => {
+      state.gradingImageData = dataUrl;
+      $('gImageUrl').value = '';
+      $('gImg').src = dataUrl;
+      $('gImg').style.visibility = 'visible';
+    });
+  });
+
+  $('gImageUrl').addEventListener('input', () => {
+    const url = $('gImageUrl').value.trim();
+    if (url) {
+      state.gradingImageData = null;
+      $('gImageFile').value = '';
+      $('gImg').src = url;
+      $('gImg').style.visibility = 'visible';
+    }
+  });
+
+  $('gCancel').addEventListener('click', () => {
+    $('gradingForm').classList.add('hidden');
+    state.gradingEditId = null;
+  });
+
+  $('gSubmit').addEventListener('click', async () => {
+    const name = $('gName').value.trim();
+    const set = $('gSet').value;
+    if (!name) { alert('Enter a card name first.'); return; }
+    if (!set) { alert('Choose a set first.'); return; }
+
+    const isEdit = !!state.gradingEditId;
+    $('gSubmit').disabled = true;
+    $('gSubmit').textContent = isEdit ? 'Saving\u2026' : 'Adding\u2026';
+    try {
+      const payload = {
+        category: 'grading',
+        name,
+        set,
+        image: state.gradingImageData || $('gImageUrl').value.trim() || state.gradingCurrentImage || null,
+        rawPrice: $('gRawPrice').value || null,
+        gradingService: $('gService').value,
+        gradingTier: $('gTier').value,
+        gradingFee: $('gFee').value || null,
+        grade10Price: $('g10Price').value || null,
+        grade9Price: $('g9Price').value || null,
+        gemRate: $('gGemRate').value || null,
+        psa10Pop: $('gPsa10Pop').value || null,
+        gradeRoiMin: $('gGradeRoiMin').value || null,
+        gradeProfitMin: $('gGradeProfitMin').value || null,
+        skipRoiMax: $('gSkipRoiMax').value || null,
+        skipProfitMax: $('gSkipProfitMax').value || null
+      };
+      if (isEdit) payload.id = state.gradingEditId;
+
+      const res = await fetch('/api/watchlist', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      $('gradingForm').classList.add('hidden');
+      state.gradingEditId = null;
+      await loadWatchlist();
+    } catch (err) {
+      alert(`Could not ${isEdit ? 'save changes to' : 'add'} this card: ` + err.message);
+    } finally {
+      $('gSubmit').disabled = false;
+      $('gSubmit').textContent = isEdit ? 'Save changes' : 'Add to calculator';
+    }
+  });
+
+  populateGradingServiceDropdowns();
+
+  function openThresholdForm(card, mode) {
+    card = card || {};
+    state.pendingCard = card;
+    state.editing = mode === 'edit';
+    state.manualMode = mode === 'manual' || (mode === 'edit' && !!card.manual);
+    state.manualImageData = null;
+
+    $('tfImg').src = card.image || '';
+    $('tfImg').style.visibility = card.image ? 'visible' : 'hidden';
+    $('tfName').value = card.name || '';
+    $('tfName').readOnly = !state.manualMode;
+
+    $('tfSet').classList.toggle('hidden', state.manualMode);
+    $('tfSetSelect').classList.toggle('hidden', !state.manualMode);
+    $('tfSet').value = card.set || '';
+    $('tfSetSelect').value = state.manualMode ? (card.set || '') : '';
+
+    $('tfImageField').classList.toggle('hidden', !state.manualMode);
+    $('tfImageFile').value = '';
+    $('tfImageUrl').value = '';
+
+    $('tfProductTypeField').classList.toggle('hidden', !state.manualMode);
+    $('tfProductType').value = card.productType || 'card';
+
+    $('tfPriceField').classList.toggle('hidden', !state.manualMode);
+    $('tfPrice').value = state.editing && card.lastPrice != null ? card.lastPrice : '';
+
+    $('tfTarget').value = state.editing && card.targetPrice != null ? card.targetPrice : '';
+    $('tfDip').value = state.editing && card.dipPercent != null ? card.dipPercent : '';
+    $('tfLow').checked = state.editing ? !!card.alertOnLow : true;
+    $('tfSubmit').textContent = state.editing ? 'Save changes' : 'Track this card';
+
+    state.formCategory = (state.editing && card.category === 'investing') ? 'investing' : 'watching';
+    $('catWatchingBtn').classList.toggle('active', state.formCategory === 'watching');
+    $('catInvestingBtn').classList.toggle('active', state.formCategory === 'investing');
+
+    $('thresholdForm').classList.remove('hidden');
+    $('searchResults').innerHTML = '';
+    $('searchInput').value = '';
+    $('thresholdForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (state.manualMode) $('tfName').focus();
+  }
+
+  function resizeImageFile(file, callback) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = 220;
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        callback(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  $('tfImageFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    resizeImageFile(file, (dataUrl) => {
+      state.manualImageData = dataUrl;
+      $('tfImageUrl').value = '';
+      $('tfImg').src = dataUrl;
+      $('tfImg').style.visibility = 'visible';
+    });
+  });
+
+  $('tfImageUrl').addEventListener('input', () => {
+    const url = $('tfImageUrl').value.trim();
+    if (url) {
+      state.manualImageData = null;
+      $('tfImageFile').value = '';
+      $('tfImg').src = url;
+      $('tfImg').style.visibility = 'visible';
+    }
+  });
+
+
+  $('manualAddBtn').addEventListener('click', () => openThresholdForm(null, 'manual'));
+
+  $('catWatchingBtn').addEventListener('click', () => {
+    state.formCategory = 'watching';
+    $('catWatchingBtn').classList.add('active');
+    $('catInvestingBtn').classList.remove('active');
+  });
+  $('catInvestingBtn').addEventListener('click', () => {
+    state.formCategory = 'investing';
+    $('catInvestingBtn').classList.add('active');
+    $('catWatchingBtn').classList.remove('active');
+  });
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    ['watching', 'investing', 'grading'].forEach((t) => {
+      $(`${t}TabBtn`).classList.toggle('active', t === tab);
+    });
+    $('checkNowBtn').classList.toggle('hidden', tab === 'grading');
+    $('exportBtn').classList.toggle('hidden', tab === 'grading');
+    $('addGradingBtn').classList.toggle('hidden', tab !== 'grading');
+    render();
+  }
+
+  $('watchingTabBtn').addEventListener('click', () => switchTab('watching'));
+  $('investingTabBtn').addEventListener('click', () => switchTab('investing'));
+  $('gradingTabBtn').addEventListener('click', () => switchTab('grading'));
+
+  $('tfCancel').addEventListener('click', () => {
+    $('thresholdForm').classList.add('hidden');
+    state.pendingCard = null;
+    state.editing = false;
+    state.manualMode = false;
+  });
+
+  $('tfSubmit').addEventListener('click', async () => {
+    const isEdit = state.editing;
+    const isManual = state.manualMode;
+    const name = $('tfName').value.trim();
+    const selectedSet = $('tfSetSelect').value;
+
+    if (!isEdit && isManual && !name) {
+      alert('Enter a card name first.');
+      return;
+    }
+    if (isManual && !selectedSet) {
+      alert('Choose a set first.');
+      return;
+    }
+    if (!isEdit && !isManual && !state.pendingCard.id) return;
+
+    $('tfSubmit').disabled = true;
+    $('tfSubmit').textContent = isEdit ? 'Saving\u2026' : 'Adding\u2026';
+    try {
+      const payload = {
+        targetPrice: $('tfTarget').value || null,
+        dipPercent: $('tfDip').value || null,
+        alertOnLow: $('tfLow').checked,
+        category: state.formCategory
+      };
+      if (isEdit) {
+        payload.id = state.pendingCard.id;
+        if (isManual) {
+          payload.price = $('tfPrice').value || null;
+          payload.set = selectedSet;
+          payload.image = state.manualImageData || $('tfImageUrl').value.trim() || state.pendingCard.image || null;
+          payload.productType = $('tfProductType').value;
+        }
+      } else if (isManual) {
+        payload.manual = true;
+        payload.name = name;
+        payload.set = selectedSet;
+        payload.productType = $('tfProductType').value;
+        payload.price = $('tfPrice').value || null;
+        payload.image = state.manualImageData || $('tfImageUrl').value.trim() || null;
+      } else {
+        payload.id = state.pendingCard.id;
+      }
+
+      const res = await fetch('/api/watchlist', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      $('thresholdForm').classList.add('hidden');
+      state.pendingCard = null;
+      state.editing = false;
+      state.manualMode = false;
+      await loadWatchlist();
+    } catch (err) {
+      alert(`Could not ${isEdit ? 'save changes to' : 'add'} this card: ` + err.message);
+    } finally {
+      $('tfSubmit').disabled = false;
+      $('tfSubmit').textContent = isEdit ? 'Save changes' : 'Track this card';
+    }
+  });
+
+  function findHistoricalPrice(history, daysAgo, toleranceDays) {
+    if (!Array.isArray(history) || !history.length) return null;
+    const target = new Date();
+    target.setDate(target.getDate() - daysAgo);
+    const targetTime = target.getTime();
+
+    let closest = null;
+    let closestDiff = Infinity;
+    history.forEach((point) => {
+      const diff = Math.abs(new Date(point.date).getTime() - targetTime);
+      if (diff < closestDiff) { closestDiff = diff; closest = point; }
+    });
+    // Only use it if there's actually a point roughly near that date --
+    // otherwise a 3-day-old watchlist entry would misleadingly borrow
+    // its only data point as a stand-in for "30 days ago." The 24h lookup
+    // needs a much tighter window than that, or it'd match something
+    // several days stale and call it "24 hours ago."
+    const toleranceMs = (toleranceDays != null ? toleranceDays : 3) * 24 * 60 * 60 * 1000;
+    return (closest && closestDiff <= toleranceMs) ? closest.price : null;
+  }
+
+  function timeWindowGridHtml(c) {
+    const cur = c.currency === 'EUR' ? '\u20AC' : '$';
+    const h24 = findHistoricalPrice(c.history, 1, 0.5);
+    const h7 = findHistoricalPrice(c.history, 7);
+    const h30 = findHistoricalPrice(c.history, 30);
+    const pct = (then) => (then != null && c.lastPrice != null) ? (((c.lastPrice - then) / then) * 100) : null;
+
+    const cell = (label, priceVal, pctVal) => {
+      const cls = pctVal == null ? '' : (pctVal >= 0 ? 'up' : 'down');
+      const sign = pctVal != null && pctVal > 0 ? '+' : '';
+      return `<div class="invest-cell"><span class="lbl">${label}</span><span class="val ${cls}">${priceVal != null ? cur + Number(priceVal).toFixed(2) : '\u2014'}${pctVal != null ? ` (${sign}${pctVal.toFixed(1)}%)` : ''}</span></div>`;
+    };
+
+    return `<div class="invest-grid">${cell('24h ago', h24, pct(h24))}${cell('7d ago', h7, pct(h7))}${cell('30d ago', h30, pct(h30))}</div>`;
+  }
+
+
+  function csvField(value) {
+    if (value == null) return '';
+    const str = String(value);
+    return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+  }
+
+  function exportCsv(cards) {
+    const headers = ['Name', 'Set', 'Currency', 'Current Price', 'Target Price', 'Target Dip %', '24h Ago', '24h %', '7 Days Ago', '7 Day %', '30 Days Ago', '30 Day %'];
+    const rows = [headers];
+
+    cards.forEach((c) => {
+      const price24 = findHistoricalPrice(c.history, 1, 0.5);
+      const price7 = findHistoricalPrice(c.history, 7);
+      const price30 = findHistoricalPrice(c.history, 30);
+      const pct24 = (price24 != null && c.lastPrice != null) ? (((c.lastPrice - price24) / price24) * 100).toFixed(1) : '';
+      const pct7 = (price7 != null && c.lastPrice != null) ? (((c.lastPrice - price7) / price7) * 100).toFixed(1) : '';
+      const pct30 = (price30 != null && c.lastPrice != null) ? (((c.lastPrice - price30) / price30) * 100).toFixed(1) : '';
+
+      rows.push([
+        c.name,
+        c.set || '',
+        c.currency || 'USD',
+        c.lastPrice != null ? c.lastPrice : '',
+        c.targetPrice != null ? c.targetPrice : '',
+        c.dipPercent != null ? c.dipPercent : '',
+        price24 != null ? price24 : '',
+        pct24,
+        price7 != null ? price7 : '',
+        pct7,
+        price30 != null ? price30 : '',
+        pct30
+      ]);
+    });
+
+    const csv = rows.map((row) => row.map(csvField).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `card-${state.activeTab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  $('exportBtn').addEventListener('click', () => {
+    const cards = state.cards.filter((c) => state.activeTab === 'investing' ? c.category === 'investing' : c.category !== 'investing');
+    if (!cards.length) { alert(`Nothing in ${state.activeTab} yet to export.`); return; }
+    exportCsv(cards);
+  });
+
+  async function removeCard(id) {
+    try {
+      const res = await fetch('/api/watchlist?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      await loadWatchlist();
+    } catch (err) {
+      alert('Could not remove this card: ' + err.message);
+    }
+  }
+
+  $('checkNowBtn').addEventListener('click', async () => {
+    const btn = $('checkNowBtn');
+    btn.disabled = true;
+    btn.textContent = 'Checking\u2026';
+    try {
+      const res = await fetch('/api/check', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      await loadWatchlist();
+
+      const failures = (data.results || []).filter((r) => r.error);
+      if (failures.length) {
+        btn.textContent = `Checked \u2014 ${failures.length} failed`;
+        const lines = failures.map((f) => {
+          const c = state.cards.find((card) => card.id === f.id);
+          return `${c ? c.name : f.id}: ${f.error}`;
+        });
+        alert(`${failures.length} card(s) didn't update this time:\n\n${lines.join('\n')}`);
+      } else {
+        btn.textContent = 'Checked \u2713';
+      }
+    } catch (err) {
+      alert('Check failed: ' + err.message);
+      btn.textContent = 'Check now';
+    } finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Check now'; }, 1500);
+    }
+  });
+
+  loadSets();
+  loadWatchlist();
+</script>
+</body>
+</html>
