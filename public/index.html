@@ -337,6 +337,28 @@
   .invest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem 0.4rem; font-family: var(--font-mono); margin-top: 0.5rem; }
 
   .chart-wrap { margin-top: 0.6rem; }
+  .chart-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; }
+  .chart-tab {
+    flex: 1;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    color: var(--paper-muted);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    padding: 0.3rem 0.2rem;
+    min-height: auto;
+    border-radius: 5px;
+  }
+  .chart-tab.active { border-color: var(--brass); color: var(--brass-bright); background: var(--brass-dim); }
+  .chart-summary {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--paper);
+    margin-bottom: 0.3rem;
+  }
+  .chart-summary .up { color: var(--paper-dim); }
+  .chart-summary .down { color: var(--brass-bright); }
+
   .price-chart { width: 100%; height: 70px; display: block; }
   .chart-area { fill: var(--brass-dim); stroke: none; }
   .chart-line { fill: none; stroke: var(--brass-bright); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -506,11 +528,12 @@
   }
 
   .row-actions {
-    position: absolute;
-    bottom: 0.6rem;
-    right: 0.7rem;
     display: flex;
+    justify-content: flex-end;
     gap: 0.4rem;
+    margin-top: 0.7rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--line);
   }
   .edit-btn, .remove-btn {
     background: transparent;
@@ -727,7 +750,7 @@
   </div>
 
 <script>
-  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching', gradingEditId: null, gradingImageData: null, gradingCurrentImage: null };
+  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching', gradingEditId: null, gradingImageData: null, gradingCurrentImage: null, chartRange: {} };
 
   // Reference fees only -- grading company pricing changes often (several
   // tiers moved in early-to-mid 2026), so these pre-fill the fee field but
@@ -1517,22 +1540,53 @@
     return `<div class="invest-grid">${cell('24h ago', h24, pct(h24))}${cell('7d ago', h7, pct(h7))}${cell('30d ago', h30, pct(h30))}</div>`;
   }
 
-  function priceChartHtml(c) {
+  const CHART_RANGES = [
+    { key: '24h', label: '24H', days: 1 },
+    { key: '7d', label: '7D', days: 7 },
+    { key: '30d', label: '30D', days: 30 },
+    { key: '3m', label: '3M', days: 90 },
+    { key: '6m', label: '6M', days: 180 },
+    { key: '1y', label: '1Y', days: 365 }
+  ];
+
+  function getFilteredHistory(history, days) {
+    if (!Array.isArray(history) || !history.length) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const filtered = history.filter((p) => new Date(p.date) >= cutoff);
+    // Fall back to whatever's available rather than showing nothing, if the
+    // range is tighter than the gap between check-ins.
+    return filtered.length >= 2 ? filtered : history.slice(-Math.min(2, history.length));
+  }
+
+  function buildChartInner(c) {
     const history = Array.isArray(c.history) ? c.history : [];
+    const tabsHtml = CHART_RANGES.map((r) => {
+      const active = (state.chartRange[c.id] || '30d') === r.key;
+      return `<button type="button" class="chart-tab ${active ? 'active' : ''}" data-id="${c.id}" data-range="${r.key}">${r.label}</button>`;
+    }).join('');
+
     if (history.length < 2) {
-      return '<div class="chart-empty">Not enough history yet to chart \u2014 check back after a few updates</div>';
+      return `<div class="chart-tabs">${tabsHtml}</div><div class="chart-empty">Not enough history yet to chart \u2014 check back after a few updates</div>`;
     }
 
+    const rangeMeta = CHART_RANGES.find((r) => r.key === (state.chartRange[c.id] || '30d')) || CHART_RANGES[2];
+    const filtered = getFilteredHistory(history, rangeMeta.days);
     const cur = c.currency === 'EUR' ? '\u20AC' : '$';
+
+    if (filtered.length < 2) {
+      return `<div class="chart-tabs">${tabsHtml}</div><div class="chart-empty">Not enough history in this range yet</div>`;
+    }
+
     const W = 300, H = 90, PAD = 6;
-    const prices = history.map((p) => p.price);
+    const prices = filtered.map((p) => p.price);
     const minP = Math.min(...prices);
     const maxP = Math.max(...prices);
-    const range = (maxP - minP) || 1;
+    const spread = (maxP - minP) || 1;
 
-    const coords = history.map((p, i) => {
-      const x = history.length === 1 ? 0 : (i / (history.length - 1)) * W;
-      const y = PAD + (H - PAD * 2) * (1 - (p.price - minP) / range);
+    const coords = filtered.map((p, i) => {
+      const x = filtered.length === 1 ? 0 : (i / (filtered.length - 1)) * W;
+      const y = PAD + (H - PAD * 2) * (1 - (p.price - minP) / spread);
       return [x, y];
     });
     const pointsStr = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
@@ -1544,24 +1598,47 @@
     const [nx, ny] = coords[minIdx];
     const [lx, ly] = coords[coords.length - 1];
 
+    const startPrice = filtered[0].price;
+    const endPrice = filtered[filtered.length - 1].price;
+    const pct = startPrice ? ((endPrice - startPrice) / startPrice) * 100 : null;
+    const pctCls = pct == null ? '' : (pct >= 0 ? 'up' : 'down');
+    const pctSign = pct != null && pct > 0 ? '+' : '';
+
     return `
-      <div class="chart-wrap">
-        <svg viewBox="0 0 ${W} ${H}" class="price-chart" preserveAspectRatio="none">
-          <path d="${areaD}" class="chart-area"></path>
-          <polyline points="${pointsStr}" class="chart-line"></polyline>
-          <circle cx="${mx}" cy="${my}" r="2.5" class="chart-dot chart-dot-high"></circle>
-          <circle cx="${nx}" cy="${ny}" r="2.5" class="chart-dot chart-dot-low"></circle>
-          <circle cx="${lx}" cy="${ly}" r="3" class="chart-dot chart-dot-current"></circle>
-        </svg>
-        <div class="chart-caption">
-          <span>low ${cur}${minP.toFixed(2)}</span>
-          <span>high ${cur}${maxP.toFixed(2)}</span>
-          <span>${history.length} point${history.length === 1 ? '' : 's'}</span>
-        </div>
+      <div class="chart-tabs">${tabsHtml}</div>
+      <div class="chart-summary">${cur}${endPrice.toFixed(2)} <span class="${pctCls}">${pct != null ? `(${pctSign}${pct.toFixed(1)}%)` : ''}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" class="price-chart" preserveAspectRatio="none">
+        <path d="${areaD}" class="chart-area"></path>
+        <polyline points="${pointsStr}" class="chart-line"></polyline>
+        <circle cx="${mx}" cy="${my}" r="2.5" class="chart-dot chart-dot-high"></circle>
+        <circle cx="${nx}" cy="${ny}" r="2.5" class="chart-dot chart-dot-low"></circle>
+        <circle cx="${lx}" cy="${ly}" r="3" class="chart-dot chart-dot-current"></circle>
+      </svg>
+      <div class="chart-caption">
+        <span>low ${cur}${minP.toFixed(2)}</span>
+        <span>high ${cur}${maxP.toFixed(2)}</span>
+        <span>${filtered.length} point${filtered.length === 1 ? '' : 's'}</span>
       </div>
     `;
   }
 
+  function priceChartHtml(c) {
+    return `<div class="chart-wrap" data-chart-id="${c.id}">${buildChartInner(c)}</div>`;
+  }
+
+  function renderChartFor(id) {
+    const c = state.cards.find((card) => card.id === id);
+    const container = document.querySelector(`.chart-wrap[data-chart-id="${id}"]`);
+    if (!c || !container) return;
+    container.innerHTML = buildChartInner(c);
+  }
+
+  $('cardList').addEventListener('click', (e) => {
+    const tab = e.target.closest('.chart-tab');
+    if (!tab) return;
+    state.chartRange[tab.dataset.id] = tab.dataset.range;
+    renderChartFor(tab.dataset.id);
+  });
 
   function csvField(value) {
     if (value == null) return '';
