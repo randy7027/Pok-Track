@@ -359,7 +359,11 @@
   .chart-summary .up { color: var(--paper-dim); }
   .chart-summary .down { color: var(--brass-bright); }
 
-  .price-chart { width: 100%; height: 70px; display: block; }
+  .price-chart { width: 100%; height: 70px; display: block; touch-action: none; cursor: crosshair; }
+  .chart-crosshair { stroke: var(--paper-dim); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: 0; }
+  .chart-crosshair.active { opacity: 0.6; }
+  .chart-scrub-dot { fill: var(--paper); stroke: var(--ink-bg); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: 0; }
+  .chart-scrub-dot.active { opacity: 1; }
   .chart-area { fill: var(--brass-dim); stroke: none; }
   .chart-line { fill: none; stroke: var(--brass-bright); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
   .chart-dot { stroke: var(--ink-surface); stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -445,6 +449,30 @@
   .grade-verdict.grade-no { background: rgba(192, 96, 90, 0.15); color: var(--loss-red); border: 1px solid var(--loss-red); }
   .grade-verdict.grade-maybe { background: var(--brass-dim); color: var(--brass-bright); border: 1px solid var(--brass); }
   .grade-verdict.grade-unknown { background: transparent; color: var(--paper-muted); border: 1px dashed var(--line); font-weight: 400; }
+
+  .sort-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--paper-muted);
+  }
+  .sort-row select {
+    flex: 1;
+    background: var(--ink-surface);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    text-transform: none;
+    letter-spacing: normal;
+  }
 
   .list-header {
     display: flex;
@@ -732,6 +760,11 @@
       <button class="tab-btn" id="gradingTabBtn" data-tab="grading">Grading</button>
     </div>
 
+    <div class="sort-row">
+      <label for="sortSelect">Sort</label>
+      <select id="sortSelect"></select>
+    </div>
+
     <div class="list-header">
       <span id="listCount">0 tracked</span>
       <div class="header-btns">
@@ -750,7 +783,25 @@
   </div>
 
 <script>
-  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching', gradingEditId: null, gradingImageData: null, gradingCurrentImage: null, chartRange: {} };
+  const state = { cards: [], pendingCard: null, editing: false, manualMode: false, sets: [], manualImageData: null, activeTab: 'watching', formCategory: 'watching', gradingEditId: null, gradingImageData: null, gradingCurrentImage: null, chartRange: {}, sortBy: { watching: 'name-asc', investing: 'name-asc', grading: 'name-asc' } };
+
+  const SORT_OPTIONS = {
+    common: [
+      { key: 'name-asc', label: 'Name (A\u2013Z)' },
+      { key: 'name-desc', label: 'Name (Z\u2013A)' },
+      { key: 'set-asc', label: 'Set (A\u2013Z)' }
+    ],
+    watching: [
+      { key: 'price-desc', label: 'Price (high\u2013low)' },
+      { key: 'price-asc', label: 'Price (low\u2013high)' },
+      { key: 'change-desc', label: 'Biggest price decrease' },
+      { key: 'change-asc', label: 'Biggest price increase' }
+    ],
+    grading: [
+      { key: 'roi-desc', label: 'Expected ROI (high\u2013low)' },
+      { key: 'roi-asc', label: 'Expected ROI (low\u2013high)' }
+    ]
+  };
 
   // Reference fees only -- grading company pricing changes often (several
   // tiers moved in early-to-mid 2026), so these pre-fill the fee field but
@@ -894,14 +945,72 @@
     }
     empty.classList.add('hidden');
 
+    const sorted = sortCards(shown, state.sortBy[state.activeTab]);
+
     if (state.activeTab === 'investing') {
-      renderInvesting(shown);
+      renderInvesting(sorted);
     } else if (state.activeTab === 'grading') {
-      renderGrading(shown);
+      renderGrading(sorted);
     } else {
-      renderWatching(shown);
+      renderWatching(sorted);
     }
+    attachChartDragHandlers();
   }
+
+  function sortCards(cards, sortKey) {
+    const sorted = cards.slice();
+    const numOrLast = (v, wantHighFirst) => {
+      if (v == null || isNaN(v)) return wantHighFirst ? -Infinity : Infinity;
+      return v;
+    };
+
+    switch (sortKey) {
+      case 'name-desc':
+        sorted.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'set-asc':
+        sorted.sort((a, b) => (a.set || '').localeCompare(b.set || '') || a.name.localeCompare(b.name));
+        break;
+      case 'price-desc':
+        sorted.sort((a, b) => numOrLast(b.lastPrice, true) - numOrLast(a.lastPrice, true));
+        break;
+      case 'price-asc':
+        sorted.sort((a, b) => numOrLast(a.lastPrice, false) - numOrLast(b.lastPrice, false));
+        break;
+      case 'change-desc': // biggest drop (most negative %) first
+        sorted.sort((a, b) => numOrLast(a.lastChangePercent, false) - numOrLast(b.lastChangePercent, false));
+        break;
+      case 'change-asc': // biggest rise (most positive %) first
+        sorted.sort((a, b) => numOrLast(b.lastChangePercent, true) - numOrLast(a.lastChangePercent, true));
+        break;
+      case 'roi-desc':
+        sorted.sort((a, b) => numOrLast(computeGradingMath(b).expectedROI, true) - numOrLast(computeGradingMath(a).expectedROI, true));
+        break;
+      case 'roi-asc':
+        sorted.sort((a, b) => numOrLast(computeGradingMath(a).expectedROI, false) - numOrLast(computeGradingMath(b).expectedROI, false));
+        break;
+      case 'name-asc':
+      default:
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+    }
+    return sorted;
+  }
+
+  function populateSortOptions() {
+    const tab = state.activeTab;
+    const options = SORT_OPTIONS.common.concat(SORT_OPTIONS[tab] || []);
+    const current = state.sortBy[tab];
+    $('sortSelect').innerHTML = options.map((o) =>
+      `<option value="${o.key}" ${o.key === current ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
+  }
+
+  $('sortSelect').addEventListener('change', () => {
+    state.sortBy[state.activeTab] = $('sortSelect').value;
+    render();
+  });
+
 
   function renderWatching(cards) {
     const list = $('cardList');
@@ -1010,30 +1119,35 @@
     });
   }
 
+  function computeGradingMath(c) {
+    const totalInvestment = (c.rawPrice != null && c.gradingFee != null) ? c.rawPrice + c.gradingFee : null;
+
+    let profit10 = null, roi10 = null;
+    if (totalInvestment != null && c.grade10Price != null) {
+      profit10 = c.grade10Price - totalInvestment;
+      roi10 = (profit10 / totalInvestment) * 100;
+    }
+    let profit9 = null, roi9 = null;
+    if (totalInvestment != null && c.grade9Price != null) {
+      profit9 = c.grade9Price - totalInvestment;
+      roi9 = (profit9 / totalInvestment) * 100;
+    }
+    let expectedProfit = null, expectedROI = null;
+    if (totalInvestment != null && c.grade10Price != null && c.grade9Price != null && c.gemRate != null) {
+      const expectedValue = (c.gemRate / 100) * c.grade10Price + ((100 - c.gemRate) / 100) * c.grade9Price;
+      expectedProfit = expectedValue - totalInvestment;
+      expectedROI = (expectedProfit / totalInvestment) * 100;
+    }
+    return { totalInvestment, profit10, roi10, profit9, roi9, expectedProfit, expectedROI };
+  }
+
   function renderGrading(cards) {
     const list = $('cardList');
     const money2 = (n) => n != null ? `$${Number(n).toFixed(2)}` : '\u2014';
     const pmoney = (n) => n == null ? '\u2014' : `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
 
     list.innerHTML = cards.map((c) => {
-      const totalInvestment = (c.rawPrice != null && c.gradingFee != null) ? c.rawPrice + c.gradingFee : null;
-
-      let profit10 = null, roi10 = null;
-      if (totalInvestment != null && c.grade10Price != null) {
-        profit10 = c.grade10Price - totalInvestment;
-        roi10 = (profit10 / totalInvestment) * 100;
-      }
-      let profit9 = null, roi9 = null;
-      if (totalInvestment != null && c.grade9Price != null) {
-        profit9 = c.grade9Price - totalInvestment;
-        roi9 = (profit9 / totalInvestment) * 100;
-      }
-      let expectedProfit = null, expectedROI = null;
-      if (totalInvestment != null && c.grade10Price != null && c.grade9Price != null && c.gemRate != null) {
-        const expectedValue = (c.gemRate / 100) * c.grade10Price + ((100 - c.gemRate) / 100) * c.grade9Price;
-        expectedProfit = expectedValue - totalInvestment;
-        expectedROI = (expectedProfit / totalInvestment) * 100;
-      }
+      const { totalInvestment, profit10, roi10, profit9, roi9, expectedProfit, expectedROI } = computeGradingMath(c);
 
       const roiCls = (v) => v == null ? '' : (v >= 0 ? 'up' : 'down');
       const roiTxt = (v) => v == null ? '' : ` (${v >= 0 ? '+' : ''}${v.toFixed(0)}%)`;
@@ -1425,6 +1539,7 @@
     $('checkNowBtn').classList.toggle('hidden', tab === 'grading');
     $('exportBtn').classList.toggle('hidden', tab === 'grading');
     $('addGradingBtn').classList.toggle('hidden', tab !== 'grading');
+    populateSortOptions();
     render();
   }
 
@@ -1606,13 +1721,15 @@
 
     return `
       <div class="chart-tabs">${tabsHtml}</div>
-      <div class="chart-summary">${cur}${endPrice.toFixed(2)} <span class="${pctCls}">${pct != null ? `(${pctSign}${pct.toFixed(1)}%)` : ''}</span></div>
-      <svg viewBox="0 0 ${W} ${H}" class="price-chart" preserveAspectRatio="none">
+      <div class="chart-summary" data-id="${c.id}">${cur}${endPrice.toFixed(2)} <span class="${pctCls}">${pct != null ? `(${pctSign}${pct.toFixed(1)}%)` : ''}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" class="price-chart" data-id="${c.id}" preserveAspectRatio="none">
         <path d="${areaD}" class="chart-area"></path>
         <polyline points="${pointsStr}" class="chart-line"></polyline>
         <circle cx="${mx}" cy="${my}" r="2.5" class="chart-dot chart-dot-high"></circle>
         <circle cx="${nx}" cy="${ny}" r="2.5" class="chart-dot chart-dot-low"></circle>
         <circle cx="${lx}" cy="${ly}" r="3" class="chart-dot chart-dot-current"></circle>
+        <line class="chart-crosshair" x1="0" y1="0" x2="0" y2="${H}"></line>
+        <circle class="chart-scrub-dot" r="3.5" cx="0" cy="0"></circle>
       </svg>
       <div class="chart-caption">
         <span>low ${cur}${minP.toFixed(2)}</span>
@@ -1631,6 +1748,7 @@
     const container = document.querySelector(`.chart-wrap[data-chart-id="${id}"]`);
     if (!c || !container) return;
     container.innerHTML = buildChartInner(c);
+    attachChartDragHandlers();
   }
 
   $('cardList').addEventListener('click', (e) => {
@@ -1639,6 +1757,66 @@
     state.chartRange[tab.dataset.id] = tab.dataset.range;
     renderChartFor(tab.dataset.id);
   });
+
+  // Drag-to-scrub: press and drag along the chart to see the price at any
+  // point, same idea as scrubbing a chart on TCGPlayer. Uses Pointer Events
+  // so the same code handles both touch and mouse.
+  function attachChartDragHandlers() {
+    document.querySelectorAll('.price-chart').forEach((svg) => {
+      const id = svg.dataset.id;
+
+      function scrubTo(clientX) {
+        const c = state.cards.find((card) => card.id === id);
+        if (!c) return;
+        const rangeMeta = CHART_RANGES.find((r) => r.key === (state.chartRange[id] || '30d')) || CHART_RANGES[2];
+        const filtered = getFilteredHistory(c.history, rangeMeta.days);
+        if (filtered.length < 2) return;
+
+        const rect = svg.getBoundingClientRect();
+        const relX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        const svgX = (relX / rect.width) * 300;
+        const idx = Math.max(0, Math.min(filtered.length - 1, Math.round((svgX / 300) * (filtered.length - 1))));
+        const point = filtered[idx];
+
+        const x = filtered.length === 1 ? 0 : (idx / (filtered.length - 1)) * 300;
+        const prices = filtered.map((p) => p.price);
+        const minP = Math.min(...prices), maxP = Math.max(...prices);
+        const spread = (maxP - minP) || 1;
+        const y = 6 + (90 - 12) * (1 - (point.price - minP) / spread);
+
+        const crosshair = svg.querySelector('.chart-crosshair');
+        const dot = svg.querySelector('.chart-scrub-dot');
+        crosshair.setAttribute('x1', x);
+        crosshair.setAttribute('x2', x);
+        crosshair.classList.add('active');
+        dot.setAttribute('cx', x);
+        dot.setAttribute('cy', y);
+        dot.classList.add('active');
+
+        const summary = document.querySelector(`.chart-summary[data-id="${id}"]`);
+        if (summary) {
+          const cur = c.currency === 'EUR' ? '\u20AC' : '$';
+          const dateStr = new Date(point.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          summary.textContent = `${dateStr}: ${cur}${point.price.toFixed(2)}`;
+        }
+      }
+
+      function endScrub() {
+        renderChartFor(id);
+      }
+
+      svg.addEventListener('pointerdown', (e) => {
+        svg.setPointerCapture(e.pointerId);
+        scrubTo(e.clientX);
+      });
+      svg.addEventListener('pointermove', (e) => {
+        if (e.pointerId != null && svg.hasPointerCapture && !svg.hasPointerCapture(e.pointerId)) return;
+        scrubTo(e.clientX);
+      });
+      svg.addEventListener('pointerup', endScrub);
+      svg.addEventListener('pointercancel', endScrub);
+    });
+  }
 
   function csvField(value) {
     if (value == null) return '';
@@ -1734,6 +1912,7 @@
     }
   });
 
+  populateSortOptions();
   loadSets();
   loadWatchlist();
 </script>
