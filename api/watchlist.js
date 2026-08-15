@@ -41,6 +41,7 @@ module.exports = async (req, res) => {
         gradeRoiMin, gradeProfitMin, skipRoiMax, skipProfitMax
       } = body;
       const today = new Date().toISOString().slice(0, 10);
+      const createdAt = new Date().toISOString();
       let record;
 
       if (category === 'grading') {
@@ -60,6 +61,7 @@ module.exports = async (req, res) => {
           image: image || null,
           category: 'grading',
           currency: 'USD',
+          createdAt: createdAt,
           rawPrice: toNumberOrNull(rawPrice),
           gradingService: gradingService || '',
           gradingTier: gradingTier || '',
@@ -94,6 +96,7 @@ module.exports = async (req, res) => {
           manual: true,
           productType: productType || 'card',
           category: category === 'investing' ? 'investing' : 'watching',
+          createdAt: createdAt,
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
           alertOnLow: !!alertOnLow,
@@ -131,6 +134,7 @@ module.exports = async (req, res) => {
           image: imageUrl(card.image, 'low'),
           manual: false,
           category: category === 'investing' ? 'investing' : 'watching',
+          createdAt: createdAt,
           targetPrice: toNumberOrNull(targetPrice),
           dipPercent: toNumberOrNull(dipPercent),
           alertOnLow: !!alertOnLow,
