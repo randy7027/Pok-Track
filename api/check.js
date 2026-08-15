@@ -4,7 +4,7 @@ const { sendPush } = require('../lib/notify');
 const { evaluateCard } = require('../lib/alerts');
 
 const LIST_KEY = 'watchlist:ids';
-const MAX_HISTORY_POINTS = 90;
+const MAX_HISTORY_POINTS = 400; // a bit over a year of daily points
 
 async function checkOne(redis, id, today) {
   const raw = await redis.get(`card:${id}`);

@@ -221,7 +221,7 @@ module.exports = async (req, res) => {
 
           record.history = Array.isArray(record.history) ? record.history : [];
           record.history.push({ date: today, price: newPrice });
-          if (record.history.length > 90) record.history = record.history.slice(-90);
+          if (record.history.length > 400) record.history = record.history.slice(-400);
           record.lowestSeen = lowestSeen;
           record.alerting = reasons.length > 0;
           record.alertReasons = reasons;
