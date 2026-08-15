@@ -789,7 +789,9 @@
     common: [
       { key: 'name-asc', label: 'Name (A\u2013Z)' },
       { key: 'name-desc', label: 'Name (Z\u2013A)' },
-      { key: 'set-asc', label: 'Set (A\u2013Z)' }
+      { key: 'set-asc', label: 'Set (A\u2013Z)' },
+      { key: 'added-desc', label: 'Date added (newest first)' },
+      { key: 'added-asc', label: 'Date added (oldest first)' }
     ],
     watching: [
       { key: 'price-desc', label: 'Price (high\u2013low)' },
@@ -988,6 +990,22 @@
         break;
       case 'roi-asc':
         sorted.sort((a, b) => numOrLast(computeGradingMath(a).expectedROI, false) - numOrLast(computeGradingMath(b).expectedROI, false));
+        break;
+      case 'added-desc': // newest first
+        sorted.sort((a, b) => {
+          if (!a.createdAt && !b.createdAt) return 0;
+          if (!a.createdAt) return 1;
+          if (!b.createdAt) return -1;
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+        break;
+      case 'added-asc': // oldest first
+        sorted.sort((a, b) => {
+          if (!a.createdAt && !b.createdAt) return 0;
+          if (!a.createdAt) return 1;
+          if (!b.createdAt) return -1;
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        });
         break;
       case 'name-asc':
       default:
